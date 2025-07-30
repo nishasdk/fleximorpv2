@@ -1,0 +1,209 @@
+# Blyth Configuration  
+# Location: Blyth, UK North Sea (55.13°N, -1.51°W)
+# Environment: Offshore marine environment
+# Context: Mature offshore wind market with established infrastructure
+
+site:
+  name: "Blyth, UK"
+  coordinates: [55.13, -1.51]
+  description: "Offshore North Sea location with established maritime infrastructure"
+  environment_type: "offshore"
+  water_depth: 35        # meters, typical North Sea depth
+  distance_to_shore: 5.0 # km, offshore location
+
+# API data sources configuration
+data_sources:
+  weather:
+    primary: "copernicus"    # European marine data
+    secondary: "openweather" # Local weather conditions
+    cache_duration: 12       # hours, more dynamic offshore conditions
+    
+  wind_resource:
+    source: "nrel"
+    hub_heights: [100, 120, 150]  # Large offshore turbines
+    cache_duration: 168           # 1 week
+    
+  solar_resource:
+    source: "nrel"
+    tilt_angles: [25, 30, 35]     # UK latitude optimized
+    cache_duration: 168
+    
+  wave_resource:
+    source: "copernicus"
+    significant_wave_heights: true
+    wave_periods: true
+    cache_duration: 24
+
+# User-configurable design variables - all unknown for optimization
+design_variables:
+  technology_mix:
+    status: "unknown"  # Optimize technology combination
+    constraints:
+      allowed_technologies: ["wind", "solar", "wave"]
+      min_technologies: 1
+      max_technologies: 3
+      environmental_restrictions:
+        wind: "Minimize impact on seabird migration and shipping lanes"
+        wave: "Consider impact on marine ecosystem and fishing"
+        solar: "Floating solar considerations in marine environment"
+      
+  location:
+    status: "constrained"  # Known general area, optimize specific location
+    constraints:
+      search_area:
+        bounds: [[55.0, -1.8], [55.3, -1.2]]    # Blyth offshore area
+        depth_range: [20, 60]       # Suitable offshore depths
+        shore_distance_range: [3.0, 15.0]  # Offshore wind zone
+      exclusion_zones:
+        - type: "shipping"
+          description: "Major shipping lanes to Newcastle and Blyth ports"
+          priority: "high"
+        - type: "fishing"
+          description: "Commercial fishing grounds"
+          priority: "medium"
+        - type: "environmental"
+          description: "Seabird nesting and feeding areas"
+          priority: "high"
+        - type: "military"
+          description: "MOD exercise areas"
+          priority: "high"
+          
+  capacity:
+    status: "unknown"  # Market-driven capacity optimization
+    constraints:
+      total_range: [50, 500]    # MW, commercial scale
+      individual_tech_limits:
+        wind: [25, 400]         # Large offshore wind farm
+        solar: [10, 100]        # Floating solar supplement
+        wave: [5, 50]           # Wave energy array
+
+# Technology specifications - mature offshore market
+technologies:
+  wind:
+    available: true
+    environmental_impact: "medium"
+    ecosystem_concerns:
+      - "Seabird collision and displacement"
+      - "Underwater noise during construction"
+      - "Visual impact from shore"
+      - "Electromagnetic field effects on marine life"
+    cost_per_mw: 3500000       # USD, offshore wind costs
+    capacity_factor: 0.45      # Good North Sea wind resource
+    technical_params:
+      turbine_rating: 8.0      # MW, large offshore turbines
+      hub_height: 120          # meters
+      rotor_diameter: 150      # meters
+      availability: 0.97       # High availability target
+      foundation_type: "monopile"
+      
+  solar:
+    available: true
+    environmental_impact: "low"
+    ecosystem_concerns:
+      - "Minimal marine ecosystem impact"
+      - "Potential benefits as artificial reef"
+      - "Navigation considerations"
+    cost_per_mw: 2200000       # USD, floating solar with marine platform
+    capacity_factor: 0.12      # UK solar conditions, marine environment
+    technical_params:
+      panel_rating: 0.5        # kW per panel
+      tilt_angle: 30           # degrees
+      tracking: false          # Fixed for marine durability
+      floating_platform: true
+      marine_grade: true
+      
+  wave:
+    available: true
+    environmental_impact: "medium"
+    ecosystem_concerns:
+      - "Underwater noise"
+      - "Changes to wave patterns affecting coastline"
+      - "Impact on benthic communities"
+    cost_per_mw: 5000000       # USD, emerging technology higher costs
+    capacity_factor: 0.25      # North Sea wave resource
+    technical_params:
+      device_type: "oscillating_water_column"
+      rated_power: 1.0         # MW per device
+      survival_wave_height: 15 # meters
+      cut_in_wave_height: 1.0  # meters
+
+# Optimization configuration
+optimization:
+  adaptation_strategy:
+    unknown_technology: "multi_objective_screening"  # Compare all options
+    unknown_location: "spatial_optimization"         # GIS-based optimization
+    unknown_capacity: "economic_sizing"             # Market-driven sizing
+    
+  objective: "maximize_npv"    # Commercial project focus
+  secondary_objectives:
+    - "minimize_lcoe"
+    - "minimize_environmental_impact"
+    - "maximize_energy_yield"
+    
+  constraints:
+    max_investment: 1500000000  # USD, large commercial scale
+    min_capacity_factor: 0.35   # Commercial viability threshold
+    max_total_capacity: 500     # MW, transmission constraints
+    environmental_thresholds:
+      max_ecosystem_impact: "medium"
+      required_setbacks:
+        shipping_lanes: 2.0     # km
+        fishing_areas: 1.0      # km
+        protected_areas: 5.0    # km
+
+# Stakeholder considerations
+stakeholders:
+  community_ownership: false    # Commercial development
+  indigenous_rights: false     # Not applicable
+  environmental_groups: true   # Active UK environmental oversight
+  fishing_industry: true      # North Sea fishing interests
+  tourism_industry: true      # Coastal tourism considerations
+  shipping_industry: true     # Major shipping routes
+  decision_criteria:
+    economic_weight: 0.6       # Commercial focus
+    environmental_weight: 0.3
+    social_weight: 0.1
+
+# Uncertainty parameters
+uncertainty:
+  monte_carlo_runs: 1500       # Higher for commercial analysis
+  variables:
+    weather: "stochastic"
+    electricity_price: "scenario_based"  # UK market volatility
+    capex: "normal_distribution"
+    opex: "normal_distribution"
+    environmental_impact: "regulatory_dependent"
+    policy_changes: "scenario_based"     # UK energy policy changes
+
+# Flexibility options
+flexibility:
+  decision_points: [2, 5, 10, 15]  # years - regular reassessment
+  expansion_options: [25, 50, 100] # MW increments
+  abandonment_option: true         # Commercial project option
+  technology_switching: true       # Technology upgrades possible
+  adaptive_deployment: true        # Phased development
+  grid_connection_expansion: true  # Grid capacity upgrades
+
+# Economic parameters
+economic:
+  discount_rate: 0.06           # UK commercial project rate
+  project_lifetime: 25         # years
+  electricity_price: 0.15      # £/kWh, UK wholesale price
+  inflation_rate: 0.025        # UK inflation target
+  tax_rate: 0.25              # UK corporation tax
+  cfd_available: true         # Contract for Difference scheme
+  subsidy_rate: 0.1           # 10% of revenue
+
+# Grid and infrastructure
+grid_connection:
+  voltage_level: "132kV"       # Distribution voltage
+  distance_to_substation: 8   # km
+  upgrade_required: false     # Existing infrastructure adequate
+  transmission_losses: 0.03   # 3% losses
+
+# Performance targets
+targets:
+  npv_target: 50000000        # USD
+  irr_target: 0.12            # 12% internal rate of return
+  payback_period: 15          # years
+  capacity_factor: 0.40       # Target overall capacity factor

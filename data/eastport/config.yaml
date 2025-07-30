@@ -1,0 +1,224 @@
+# Eastport Configuration
+# Location: Eastport, Maine, USA (44.9°N, -66.98°W)  
+# Environment: Nearshore coastal with sensitive marine ecosystem
+# Context: High tidal range, active lobster fishing industry
+
+site:
+  name: "Eastport, Maine"
+  coordinates: [44.9, -66.98]
+  description: "Nearshore coastal location with extreme tidal range and active fishing industry"
+  environment_type: "nearshore"
+  water_depth: 25        # meters, Bay of Fundy area
+  distance_to_shore: 2.0 # km, nearshore location
+  tidal_range: 6.0       # meters, extreme tidal variation
+
+# API data sources configuration
+data_sources:
+  weather:
+    primary: "nasa_power"    # North American weather data
+    secondary: "openweather" # Local marine conditions
+    cache_duration: 24       # hours
+    
+  wind_resource:
+    source: "nrel"
+    hub_heights: [80, 100, 120]  # Nearshore wind turbines
+    cache_duration: 168          # 1 week
+    
+  solar_resource:
+    source: "nrel"
+    tilt_angles: [35, 40, 45]    # Maine latitude optimization
+    cache_duration: 168
+    
+  wave_resource:
+    source: "copernicus"
+    applicable: false            # Limited due to fishing restrictions
+    tidal_resource: true         # Consider tidal energy potential
+
+# User-configurable design variables - constrained by fishing industry
+design_variables:
+  technology_mix:
+    status: "constrained"  # Limited by fishing industry constraints
+    constraints:
+      allowed_technologies: ["wind", "solar"]  # Wave/tidal excluded
+      min_technologies: 1
+      max_technologies: 2
+      environmental_restrictions:
+        wind: "Avoid disruption to bird migration and tourism views"
+        solar: "Minimize visual impact from historic downtown area"
+      exclusion_reasons:
+        wave: "Conflicts with lobster fishing grounds and gear"
+        tidal: "Extreme tidal range creates engineering challenges"
+      
+  location:
+    status: "unknown"  # Optimize location within constraints
+    constraints:
+      search_area:
+        bounds: [[44.8, -67.1], [45.0, -66.8]]  # Eastport area waters
+        depth_range: [15, 40]      # Suitable nearshore depths
+        shore_distance_range: [1.0, 5.0]  # Nearshore zone
+      exclusion_zones:
+        - type: "economic"
+          description: "Lobster fishing grounds - primary exclusion"
+          priority: "critical"
+          seasonal: false          # Year-round fishing
+        - type: "environmental"
+          description: "Whale migration routes"
+          priority: "high"
+          seasonal: true           # Seasonal restrictions
+        - type: "navigation"
+          description: "Ferry routes to Campobello Island"
+          priority: "high"
+        - type: "cultural"
+          description: "Historic viewsheds from downtown Eastport"
+          priority: "medium"
+          
+  capacity:
+    status: "unknown"  # Size for regional energy needs
+    constraints:
+      total_range: [10, 100]    # MW, regional scale
+      individual_tech_limits:
+        wind: [5, 80]           # Nearshore wind array
+        solar: [2, 30]          # Floating solar complement
+
+# Technology specifications with fishing industry considerations
+technologies:
+  wind:
+    available: true
+    environmental_impact: "medium"
+    ecosystem_concerns:
+      - "Seabird migration disruption (significant flyway)"
+      - "Visual impact on historic tourism area"
+      - "Underwater cable routing through fishing areas"
+      - "Construction vessel conflicts with fishing boats"
+    fishing_industry_impact: "medium"  # Cable routes, construction
+    cost_per_mw: 4000000       # USD, higher due to fishing constraints
+    capacity_factor: 0.42      # Good Maine coast wind resource
+    technical_params:
+      turbine_rating: 3.0      # MW, smaller for nearshore
+      hub_height: 100          # meters
+      rotor_diameter: 100      # meters
+      availability: 0.96
+      foundation_type: "jacket" # Suitable for deeper nearshore
+      
+  solar:
+    available: true
+    environmental_impact: "low"
+    ecosystem_concerns:
+      - "Minimal marine ecosystem impact"
+      - "Visual impact considerations"
+      - "Ice conditions in winter"
+    fishing_industry_impact: "low"  # Minimal conflict
+    cost_per_mw: 2000000       # USD, floating solar system
+    capacity_factor: 0.18      # Maine solar conditions
+    technical_params:
+      panel_rating: 0.4        # kW per panel
+      tilt_angle: 40           # degrees, latitude optimized
+      tracking: false          # Fixed for marine conditions
+      floating_platform: true
+      ice_resistant: true      # Winter ice conditions
+      
+  wave:
+    available: false
+    exclusion_reason: "Conflicts with lobster fishing industry - primary economic driver"
+    potential_resource: "moderate"  # Bay of Fundy wave resource exists
+    industry_impact: "critical"     # Would disrupt lobster fishing
+    
+  tidal:
+    available: false
+    exclusion_reason: "Extreme tidal range creates significant engineering challenges"
+    potential_resource: "high"      # Bay of Fundy tidal resource
+    technical_challenges: "extreme tidal range (6m), strong currents"
+
+# Optimization with fishing industry priority
+optimization:
+  adaptation_strategy:
+    unknown_technology: "fishing_compatible_screening"  # Prioritize fishing compatibility
+    unknown_location: "exclusion_filtering"             # Strict fishing area avoidance
+    unknown_capacity: "regional_sizing"                 # Size for regional grid
+    
+  objective: "minimize_lcoe"   # Cost-effective energy for rural area
+  secondary_objectives:
+    - "minimize_fishing_impact"
+    - "maximize_community_acceptance"
+    - "minimize_environmental_impact"
+    
+  constraints:
+    max_investment: 300000000   # USD, moderate regional scale
+    min_capacity_factor: 0.30   # Rural viability threshold
+    max_total_capacity: 100     # MW, regional transmission limits
+    environmental_thresholds:
+      max_ecosystem_impact: "low"
+      max_fishing_impact: "minimal"    # Critical constraint
+      required_setbacks:
+        lobster_grounds: 3.0     # km - critical buffer
+        whale_routes: 2.0        # km - seasonal compliance
+        ferry_routes: 1.0        # km
+        historic_viewshed: 8.0   # km - tourism protection
+
+# Stakeholder considerations - fishing industry dominant
+stakeholders:
+  community_ownership: false    # Private development with local benefits
+  indigenous_rights: true      # Passamaquoddy tribal interests
+  environmental_groups: true   # Active Maine environmental advocacy
+  fishing_industry: true      # DOMINANT stakeholder - lobster industry
+  tourism_industry: true      # Historic Eastport tourism
+  regional_utilities: true    # Maine grid integration
+  decision_criteria:
+    economic_weight: 0.3        # Balanced with industry protection
+    environmental_weight: 0.2
+    fishing_industry_weight: 0.4  # Dominant consideration
+    social_weight: 0.1
+
+# Uncertainty with fishing industry focus
+uncertainty:
+  monte_carlo_runs: 1200
+  variables:
+    weather: "stochastic"
+    electricity_price: "scenario_based"  # New England market
+    capex: "normal_distribution"
+    opex: "normal_distribution"
+    fishing_industry_opposition: "stakeholder_dependent"  # Key uncertainty
+    regulatory_delays: "scenario_based"   # Permitting challenges
+    environmental_compliance_costs: "normal_distribution"
+
+# Flexibility with industry coordination
+flexibility:
+  decision_points: [1, 3, 8, 15]   # years - include early exit option
+  expansion_options: [10, 20, 30]  # MW increments
+  abandonment_option: true         # High regulatory risk
+  technology_switching: false      # Limited by fishing constraints
+  adaptive_deployment: true        # Phased to test industry acceptance
+  seasonal_restrictions: true      # Coordinate with fishing seasons
+
+# Economic parameters
+economic:
+  discount_rate: 0.08           # Higher rate for regulatory risk
+  project_lifetime: 25         # years
+  electricity_price: 0.18      # $/kWh, New England rates
+  inflation_rate: 0.025        # US inflation
+  tax_rate: 0.21              # US federal + Maine state
+  renewable_energy_credits: true  # Maine REC market
+  fishing_industry_compensation: 0.02  # 2% of revenue to fishing industry
+
+# Regional grid integration
+grid_connection:
+  voltage_level: "69kV"        # Regional distribution
+  distance_to_substation: 12  # km to mainland grid
+  upgrade_required: true      # Limited rural grid capacity
+  interconnection_cost: 15000000  # USD, significant grid investment
+
+# Fishing industry coordination
+fishing_coordination:
+  seasonal_restrictions:
+    lobster_season: "year_round"      # Continuous conflict potential
+    construction_windows: ["Nov-Mar"] # Limited construction seasons
+  compensation_mechanism: "revenue_sharing"
+  consultation_process: "continuous"
+  gear_conflict_mitigation: "cable_burial_depth_3m"
+
+# Performance targets
+targets:
+  lcoe_target: 0.12           # $/kWh target
+  fishing_acceptance: "high"   # Critical success factor
+  environmental_compliance: "full"
+  community_benefits: 5000000  # USD over project lifetime

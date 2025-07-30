@@ -1,0 +1,184 @@
+# Alaska (Igiugig) Configuration
+# Location: Igiugig, Alaska, Kvichak River (59.32°N, -155.90°W)
+# Environment: Riverine/lake system with Bristol Bay access
+# Community: Village corporation of Igiugig (indigenous Yup'ik community)
+
+site:
+  name: "Igiugig, Alaska"
+  coordinates: [59.32, -155.90]
+  description: "Riverine/lake system with Bristol Bay access, indigenous Yup'ik community"
+  environment_type: "riverine"
+  water_depth: 15  # meters, typical river depth
+  distance_to_shore: 0.5  # km, riverine location
+
+# API data sources configuration
+data_sources:
+  weather:
+    primary: "nasa_power"    # Historical weather data
+    secondary: "openweather" # Current conditions and forecasts
+    cache_duration: 24       # hours
+    
+  wind_resource:
+    source: "nrel"
+    hub_heights: [30, 50, 80]  # Lower heights for small community
+    cache_duration: 168        # 1 week
+    
+  solar_resource:
+    source: "nrel"
+    tilt_angles: [55, 60, 65]  # High latitude optimized
+    cache_duration: 168
+    
+  wave_resource:
+    source: "copernicus"
+    applicable: false  # Riverine location, limited wave resource
+    seasonal_access: "Bristol Bay (summer only)"
+
+# NEW: User-configurable design variables with adaptive optimization
+design_variables:
+  technology_mix:
+    status: "unknown"  # Let system determine best mix for community
+    constraints:
+      allowed_technologies: ["wind", "solar"]  # Wave excluded for riverine location
+      min_technologies: 1
+      max_technologies: 2
+      environmental_restrictions:
+        wind: "Minimize impact on bird migration routes and traditional hunting areas"
+        solar: "Consider seasonal ice conditions and floating platform requirements"
+      
+  location:
+    status: "constrained"  # Known general area, optimize specific placement
+    constraints:
+      search_area:
+        bounds: [[59.25, -156.0], [59.4, -155.8]]  # Around Igiugig
+        depth_range: [5, 25]      # River depth constraints
+        shore_distance_range: [0.1, 2.0]  # Very close to shore
+      exclusion_zones:
+        - type: "cultural"
+          description: "Traditional subsistence fishing areas"
+          priority: "high"
+        - type: "ecological"
+          description: "Salmon spawning grounds"
+          priority: "high"
+        - type: "infrastructure"
+          description: "Existing village infrastructure"
+          priority: "medium"
+          
+  capacity:
+    status: "unknown"  # Optimize for community needs
+    constraints:
+      total_range: [0.1, 2.0]  # MW, small community scale
+      individual_tech_limits:
+        wind: [0.05, 1.0]      # Small wind turbines
+        solar: [0.05, 1.5]     # Floating solar arrays
+      community_load: 0.5      # MW average community load
+
+# Technology specifications with environmental considerations
+technologies:
+  wind:
+    available: true
+    environmental_impact: "medium"
+    ecosystem_concerns:
+      - "Bird migration disruption (minimal with proper siting)"
+      - "Noise impact on wildlife and community"
+      - "Visual impact on traditional landscape"
+    cost_per_mw: 2500000      # USD, higher for remote location
+    capacity_factor: 0.35     # Lower than coastal due to terrain
+    technical_params:
+      turbine_rating: 0.1     # MW, small community-scale turbines
+      hub_height: 30          # meters
+      rotor_diameter: 25      # meters
+      availability: 0.95
+      cold_weather_package: true
+      
+  solar:
+    available: true
+    environmental_impact: "low"
+    ecosystem_concerns:
+      - "Minimal wildlife impact with floating systems"
+      - "Ice conditions requiring robust mounting"
+      - "Seasonal light variation (midnight sun/polar night)"
+    cost_per_mw: 1800000      # USD, including floating platform
+    capacity_factor: 0.15     # Low due to high latitude and seasonal variation
+    technical_params:
+      panel_rating: 0.4       # kW per panel
+      tilt_angle: 60          # degrees, optimized for latitude
+      tracking: false         # Fixed mounting for durability
+      floating_platform: true
+      ice_resistant: true
+      
+  wave:
+    available: false          # Not applicable for riverine location
+    reason: "Riverine location with minimal wave resource"
+
+# Adaptive optimization based on unknown variables
+optimization:
+  adaptation_strategy:
+    unknown_technology: "environmental_weighting"  # Prioritize low environmental impact
+    unknown_location: "exclusion_filtering"        # Strict exclusion zone compliance
+    unknown_capacity: "community_sizing"           # Size for community needs + growth
+    
+  objective: "minimize_lcoe"  # Primary objective for remote community
+  secondary_objectives:
+    - "minimize_environmental_impact"
+    - "maximize_community_benefits"
+    - "maximize_energy_security"
+    
+  constraints:
+    max_investment: 5000000   # USD, community budget constraints
+    min_capacity_factor: 0.20 # Overall system minimum
+    max_total_capacity: 2.0   # MW, community scale limit
+    environmental_thresholds:
+      max_ecosystem_impact: "low"
+      required_setbacks:
+        cultural_sites: 0.5   # km
+        ecological_zones: 0.3 # km
+        residential_areas: 0.2 # km
+
+# Community and stakeholder considerations
+stakeholders:
+  community_ownership: true   # Village corporation ownership model
+  indigenous_rights: true     # Yup'ik traditional rights
+  environmental_groups: true  # Alaska environmental concerns
+  fishing_industry: true     # Subsistence and commercial fishing
+  tourism_industry: false    # Limited tourism in area
+  decision_criteria:
+    economic_weight: 0.4      # Balanced approach
+    environmental_weight: 0.3
+    social_weight: 0.3        # High social consideration
+
+# Uncertainty analysis parameters
+uncertainty:
+  monte_carlo_runs: 1000
+  variables:
+    weather: "stochastic"           # Weather variability
+    electricity_price: "scenario_based"  # Remote community pricing
+    capex: "normal_distribution"    # 20% std dev for remote construction
+    opex: "normal_distribution"     # 15% std dev
+    environmental_impact: "stakeholder_dependent"
+    community_load_growth: "scenario_based"  # Population change scenarios
+
+# Flexibility and real options
+flexibility:
+  decision_points: [3, 7, 12]     # years - re-evaluate system
+  expansion_options: [0.1, 0.2, 0.5]  # MW increments
+  abandonment_option: false      # Remote community needs energy security
+  technology_switching: true     # Allow tech mix changes
+  adaptive_deployment: true      # Phased deployment capability
+  seasonal_operation: true       # Consider seasonal operation patterns
+
+# Economic parameters
+economic:
+  discount_rate: 0.08            # Higher rate for remote/risky location
+  project_lifetime: 25          # years
+  electricity_price: 0.45       # $/kWh, high for remote Alaska
+  inflation_rate: 0.03
+  tax_rate: 0.0                 # Tax-exempt community corporation
+  community_benefits_rate: 1.0  # 100% community ownership
+  grant_funding_available: 0.7  # 70% potential grant funding
+
+# Performance targets
+targets:
+  energy_security: 0.95         # 95% reliability target
+  cost_reduction: 0.3           # 30% cost reduction vs diesel baseline
+  environmental_impact: "minimal"
+  community_satisfaction: "high"
