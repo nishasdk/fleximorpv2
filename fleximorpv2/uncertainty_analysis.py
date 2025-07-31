@@ -8,6 +8,7 @@ and finds robust optimal designs.
 
 import numpy as np
 from scipy import stats
+from scipy.stats import qmc  # For Latin Hypercube Sampling
 from typing import Dict, Any, List, Tuple, Optional, Union
 from dataclasses import dataclass
 import json
@@ -135,6 +136,7 @@ class UncertaintyAnalysis:
     def analyze_uncertainty(self, 
                            baseline_design: Dict[str, Any] = None,
                            reoptimize: bool = True,
+                           sampling_method: str = 'monte_carlo',
                            **kwargs) -> UncertaintyResults:
         """
         Run uncertainty analysis.
@@ -142,6 +144,7 @@ class UncertaintyAnalysis:
         Args:
             baseline_design: Optional baseline design. If None, will optimize first.
             reoptimize: Whether to reoptimize design under uncertainty
+            sampling_method: 'monte_carlo' or 'latin_hypercube'
             **kwargs: Additional parameters for analysis
             
         Returns:
@@ -159,7 +162,7 @@ class UncertaintyAnalysis:
             baseline_design = baseline_results.optimal_design
         
         # Generate uncertainty scenarios
-        scenarios = self._generate_scenarios()
+        scenarios = self._generate_scenarios(sampling_method)
         
         # Evaluate baseline design under uncertainty
         baseline_performance = self._evaluate_scenarios(baseline_design, scenarios)
@@ -181,11 +184,27 @@ class UncertaintyAnalysis:
         print(f"Uncertainty analysis completed. {len(scenarios)} scenarios evaluated.")
         return self.results
     
-    def _generate_scenarios(self) -> List[Dict[str, float]]:
-        """Generate Monte Carlo scenarios for uncertain variables."""
-        print(f"Generating {self.uncertainty_params.monte_carlo_runs} scenarios...")
+    def _generate_scenarios(self, sampling_method: str = 'monte_carlo') -> List[Dict[str, float]]:
+        """Generate scenarios using specified sampling method."""
+        print(f"Generating {self.uncertainty_params.monte_carlo_runs} scenarios using {sampling_method}...")
+        
+        # Track current sampling method for results
+        self._current_sampling_method = sampling_method
         
         np.random.seed(self.uncertainty_params.random_seed)
+        scenarios = []
+        
+        if sampling_method == 'monte_carlo':
+            scenarios = self._generate_monte_carlo_scenarios()
+        elif sampling_method == 'latin_hypercube':
+            scenarios = self._generate_latin_hypercube_scenarios()
+        else:
+            raise ValueError(f"Unknown sampling method: {sampling_method}. Use 'monte_carlo' or 'latin_hypercube'")
+        
+        return scenarios
+    
+    def _generate_monte_carlo_scenarios(self) -> List[Dict[str, float]]:
+        """Generate scenarios using standard Monte Carlo sampling."""
         scenarios = []
         
         for i in range(self.uncertainty_params.monte_carlo_runs):
@@ -195,6 +214,33 @@ class UncertaintyAnalysis:
             for var_name, distribution in self.distributions.items():
                 scenario[var_name] = distribution.rvs()
             
+            scenarios.append(scenario)
+        
+        return scenarios
+    
+    def _generate_latin_hypercube_scenarios(self) -> List[Dict[str, float]]:
+        """Generate scenarios using Latin Hypercube Sampling."""
+        if not self.distributions:
+            return []
+        
+        var_names = list(self.distributions.keys())
+        n_vars = len(var_names)
+        n_samples = self.uncertainty_params.monte_carlo_runs
+        
+        # Create Latin Hypercube sampler
+        sampler = qmc.LatinHypercube(d=n_vars, seed=self.uncertainty_params.random_seed)
+        
+        # Generate uniform samples in [0,1]^n_vars
+        uniform_samples = sampler.random(n=n_samples)
+        
+        # Transform uniform samples to distribution-specific values
+        scenarios = []
+        for i in range(n_samples):
+            scenario = {}
+            for j, var_name in enumerate(var_names):
+                distribution = self.distributions[var_name]
+                # Use percent point function (inverse CDF) to transform uniform to distribution
+                scenario[var_name] = distribution.ppf(uniform_samples[i, j])
             scenarios.append(scenario)
         
         return scenarios
@@ -380,10 +426,14 @@ class UncertaintyAnalysis:
             uncertainty_info={
                 'monte_carlo_runs': len(performance_results),
                 'uncertain_variables': list(self.distributions.keys()),
-                'random_seed': self.uncertainty_params.random_seed
+                'random_seed': self.uncertainty_params.random_seed,
+                'sampling_method': getattr(self, '_current_sampling_method', 'monte_carlo')
             },
             timestamp=datetime.now().isoformat()
         )
+        
+        # Store current sampling method for results tracking
+        self._current_sampling_method = None
         
         return results
     
@@ -445,6 +495,99 @@ class UncertaintyAnalysis:
         print(f"Results saved to: {filepath}")
         return str(filepath)
     
+    def compare_sampling_methods(self, 
+                               baseline_design: Dict[str, Any] = None,
+                               reoptimize: bool = False,
+                               n_runs: int = None) -> Dict[str, Any]:
+        """
+        Compare Monte Carlo and Latin Hypercube sampling methods.
+        
+        Args:
+            baseline_design: Optional baseline design
+            reoptimize: Whether to reoptimize design under uncertainty
+            n_runs: Number of runs for comparison (default: config value)
+            
+        Returns:
+            Dictionary with comparison results
+        """
+        print("Comparing Monte Carlo vs Latin Hypercube sampling...")
+        
+        # Temporarily adjust number of runs for comparison if specified
+        original_runs = self.uncertainty_params.monte_carlo_runs
+        if n_runs is not None:
+            self.uncertainty_params.monte_carlo_runs = n_runs
+        
+        try:
+            # Run Monte Carlo analysis
+            print("\nRunning Monte Carlo analysis...")
+            mc_results = self.analyze_uncertainty(
+                baseline_design=baseline_design,
+                reoptimize=reoptimize,
+                sampling_method='monte_carlo'
+            )
+            
+            # Run Latin Hypercube analysis
+            print("\nRunning Latin Hypercube analysis...")
+            lhs_results = self.analyze_uncertainty(
+                baseline_design=baseline_design,
+                reoptimize=reoptimize,
+                sampling_method='latin_hypercube'
+            )
+            
+            # Compare results
+            comparison = {
+                'monte_carlo': {
+                    'mean_lcoe': mc_results.mean_performance.get('lcoe', 0),
+                    'std_lcoe': mc_results.std_performance.get('lcoe', 0),
+                    'mean_npv': mc_results.mean_performance.get('npv', 0),
+                    'std_npv': mc_results.std_performance.get('npv', 0),
+                    'prob_negative_npv': mc_results.risk_metrics.get('prob_negative_npv', 0),
+                    'lcoe_var_95': mc_results.risk_metrics.get('lcoe_var_95', 0)
+                },
+                'latin_hypercube': {
+                    'mean_lcoe': lhs_results.mean_performance.get('lcoe', 0),
+                    'std_lcoe': lhs_results.std_performance.get('lcoe', 0),
+                    'mean_npv': lhs_results.mean_performance.get('npv', 0),
+                    'std_npv': lhs_results.std_performance.get('npv', 0),
+                    'prob_negative_npv': lhs_results.risk_metrics.get('prob_negative_npv', 0),
+                    'lcoe_var_95': lhs_results.risk_metrics.get('lcoe_var_95', 0)
+                },
+                'differences': {},
+                'convergence_analysis': self._analyze_convergence(mc_results, lhs_results)
+            }
+            
+            # Calculate differences
+            for metric in ['mean_lcoe', 'std_lcoe', 'mean_npv', 'std_npv', 'prob_negative_npv', 'lcoe_var_95']:
+                mc_val = comparison['monte_carlo'][metric]
+                lhs_val = comparison['latin_hypercube'][metric]
+                if mc_val != 0:
+                    comparison['differences'][metric] = {
+                        'absolute': lhs_val - mc_val,
+                        'relative_pct': ((lhs_val - mc_val) / abs(mc_val)) * 100
+                    }
+            
+            return comparison
+            
+        finally:
+            # Restore original number of runs
+            self.uncertainty_params.monte_carlo_runs = original_runs
+    
+    def _analyze_convergence(self, mc_results: UncertaintyResults, lhs_results: UncertaintyResults) -> Dict[str, Any]:
+        """Analyze convergence properties of sampling methods."""
+        return {
+            'mc_variance_estimate': mc_results.std_performance.get('lcoe', 0)**2,
+            'lhs_variance_estimate': lhs_results.std_performance.get('lcoe', 0)**2,
+            'variance_reduction_ratio': (
+                lhs_results.std_performance.get('lcoe', 1)**2 / 
+                max(mc_results.std_performance.get('lcoe', 1)**2, 1e-10)
+            ),
+            'recommendation': (
+                "Latin Hypercube shows better convergence" if 
+                lhs_results.std_performance.get('lcoe', 1) < mc_results.std_performance.get('lcoe', 1) 
+                else "Monte Carlo shows better convergence"
+            )
+        }
+    
     def get_summary(self) -> Dict[str, Any]:
         """
         Get summary of uncertainty analysis results.
@@ -463,5 +606,6 @@ class UncertaintyAnalysis:
             'prob_negative_npv': self.results.risk_metrics.get('prob_negative_npv', 0),
             'lcoe_var_95': self.results.risk_metrics.get('lcoe_var_95', 0),
             'robust_design': self.results.robust_design,
-            'monte_carlo_runs': self.results.uncertainty_info['monte_carlo_runs']
+            'monte_carlo_runs': self.results.uncertainty_info['monte_carlo_runs'],
+            'sampling_method': self.results.uncertainty_info.get('sampling_method', 'monte_carlo')
         }
