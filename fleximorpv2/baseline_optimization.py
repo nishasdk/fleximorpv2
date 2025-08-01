@@ -28,7 +28,7 @@ class OptimizationTarget:
     """Represents the optimization target specified by user."""
     target_type: str  # 'location', 'technologies', 'production'
     target_value: Any
-    constraints: Dict[str, Any] = None
+    constraints: Optional[Dict[str, Any]] = None
     
     def __post_init__(self):
         if self.constraints is None:
@@ -328,15 +328,45 @@ class BaselineOptimization:
             self.bounds['distance_to_shore']
         ])
         
-        # Run differential evolution
-        result = differential_evolution(
-            objective_func,
-            bounds=bounds_list,
-            maxiter=kwargs.get('maxiter', 1000),
-            popsize=kwargs.get('popsize', 15),
-            seed=kwargs.get('seed', 42),
-            disp=True
-        )
+        # Prepare differential evolution parameters
+        de_params = {
+            'bounds': bounds_list,
+            'maxiter': kwargs.get('maxiter', 1000),
+            'popsize': kwargs.get('popsize', 15),
+            'disp': True
+        }
+        
+        # Handle seed parameter - check if it's supported in current scipy version
+        if 'random_state' in kwargs or 'seed' in kwargs:
+            # Try random_state first (newer scipy versions), fallback to seed
+            random_state = kwargs.get('random_state', kwargs.get('seed', 42))
+            
+            # Check scipy version compatibility
+            try:
+                import scipy
+                scipy_version = tuple(map(int, scipy.__version__.split('.')[:2]))
+                
+                if scipy_version >= (1, 7):  # scipy >= 1.7 uses 'seed'
+                    de_params['seed'] = random_state
+                else:  # older scipy versions might use different parameter
+                    # For older versions, try both and catch errors
+                    de_params['seed'] = random_state
+                    
+            except (ImportError, AttributeError, ValueError):
+                # If we can't determine version, try seed parameter
+                de_params['seed'] = random_state
+        
+        # Run differential evolution with error handling
+        try:
+            result = differential_evolution(objective_func, **de_params)
+        except TypeError as e:
+            if 'seed' in str(e):
+                # Remove seed parameter and try again
+                print("Warning: 'seed' parameter not supported in this scipy version, running without seed")
+                de_params.pop('seed', None)
+                result = differential_evolution(objective_func, **de_params)
+            else:
+                raise e
         
         return result
     
@@ -430,7 +460,7 @@ class BaselineOptimization:
         
         return results
     
-    def save_results(self, output_dir: str = None) -> str:
+    def save_results(self, output_dir: Optional[str] = None) -> str:
         """
         Save optimization results to file.
         
@@ -448,7 +478,7 @@ class BaselineOptimization:
         
         if output_dir is None:
             package_root = Path(__file__).parent.parent
-            output_dir = package_root / "data" / self.config.name.lower() / "results" / "baseline"
+            output_dir = str(package_root / "data" / self.config.name.lower() / "results" / "baseline")
         
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)

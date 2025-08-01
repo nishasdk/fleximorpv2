@@ -28,9 +28,9 @@ data_sources:
     tilt_angles: [55, 60, 65]  # High latitude optimized
     cache_duration: 168
     
-  # NEW: Hydro resource assessment for river-based tidal systems
+  # ENHANCED: Hydro resource assessment for river-based systems
   hydro_resource:
-    tidal_current:
+    river_flow:
       source: "usgs_river_flow"  # US Geological Survey
       backup_source: "model_based"  # Custom flow model
       parameters:
@@ -39,27 +39,31 @@ data_sources:
         seasonal_analysis: true
       cache_duration: 720  # 30 days, river flow changes slower
     
-  wave_resource:
-    source: "copernicus"
-    applicable: false  # Riverine location, limited wave resource
-    seasonal_access: "Bristol Bay (summer only)"
+    wave:
+      source: "copernicus"
+      applicable: false  # Riverine location, limited wave resource
+      seasonal_access: "Bristol Bay (summer only)"
+    
+    tidal_range:
+      applicable: false  # Minimal tidal range in riverine location
+      reason: "Riverine location with minimal tidal variation"
 
 # ENHANCED: User-configurable design variables with zones and tech mix selection
 design_variables:
   # NEW: Tech mix selection approach
   tech_mix_known: true  # User specifies technologies, system optimizes capacities
-  technology_selection: ["wind", "solar", "hydro_tidal"]  # Selected technologies
+  technology_selection: ["wind", "solar", "hydro_river_flow"]  # Selected technologies
   
   technology_mix:
     status: "known"  # Changed from "unknown"
     constraints:
-      allowed_technologies: ["wind", "solar", "hydro_tidal"]  # Updated with tidal
+      allowed_technologies: ["wind", "solar", "hydro_river_flow"]  # Updated with river flow
       min_technologies: 1
       max_technologies: 3  # Updated to allow all three
       environmental_restrictions:
         wind: "Minimize impact on bird migration routes and traditional hunting areas"
         solar: "Consider seasonal ice conditions and deployment type optimization"
-        hydro_tidal: "Ensure fish passage and minimal sediment impact"
+        hydro_river_flow: "Ensure fish passage and minimal sediment impact"
       
   # ENHANCED: Location with exclusion/preferred zones
   location:
@@ -112,7 +116,7 @@ design_variables:
       individual_tech_limits:
         wind: [0.05, 1.0]      # Small wind turbines
         solar: [0.05, 1.5]     # Land or floating solar
-        hydro_tidal: [0.02, 0.5]  # River-based tidal systems
+        hydro_river_flow: [0.02, 0.5]  # River-based flow systems
       community_load: 0.5      # MW average community load
 
 # ENHANCED: Technology specifications with hydro category and solar deployment options
@@ -141,7 +145,8 @@ technologies:
       - "Ice conditions requiring robust mounting"
       - "Seasonal light variation (midnight sun/polar night)"
     cost_per_mw: 1800000      # USD, base cost (modified by deployment type)
-    capacity_factor: 0.15     # Low due to high latitude and seasonal variation
+    capacity_factor: 0.15     # Low due to high latitude (base for land deployment)
+    floating_capacity_factor: 0.173  # 15% higher for floating (0.15 * 1.15)
     
     # NEW: Deployment options with automatic optimization
     deployment_options:
@@ -150,6 +155,7 @@ technologies:
         cost_multiplier: 0.8  # 20% cheaper than floating
         area_per_mw: 3000    # m² per MW (less than floating)
         maintenance_factor: 1.1  # 10% easier maintenance
+        capacity_factor_modifier: 1.0  # Base capacity factor
         constraints:
           max_distance_from_shore: 2.0  # km
           suitable_terrain: "flat_permafrost"
@@ -158,12 +164,19 @@ technologies:
         cost_multiplier: 1.0  # Base cost
         area_per_mw: 4000    # m² per MW (includes platform)
         maintenance_factor: 0.8  # 20% harder maintenance
+        capacity_factor_modifier: 1.15  # 15% higher efficiency due to cooling
+        additional_benefits:
+          water_cooling_effect: 0.10  # 10% efficiency boost from cooling
+          albedo_reflection: 0.05    # 5% boost from water reflection
+          reduced_soiling: 0.02      # 2% boost from natural cleaning
         constraints:
           min_water_depth: 3.0  # meters
           ice_resistant: true
+          seasonal_ice_impact: 0.95  # 5% reduction during ice season
       both:
         available: true
         optimization_strategy: "minimize_lcoe"  # Auto-choose based on economics
+        performance_weighting: "capacity_factor"  # Consider performance in choice
     
     technical_params:
       panel_rating: 0.4       # kW per panel
@@ -185,12 +198,12 @@ technologies:
       available: false
       reason: "Minimal tidal range in riverine location"
     
-    # PRIMARY: Tidal current using river flow
-    tidal_current:
+    # PRIMARY: River flow using current velocity
+    river_flow:
       available: true
       cost_per_mw: 3500000  # USD, higher cost for specialized equipment
       capacity_factor: 0.25  # Variable based on seasonal river flow
-      resource_type: "river_flow"  # vs "ocean_tidal"
+      resource_type: "river_flow"  # Direct river flow, not tidal
       seasonal_variation: true  # Account for spring melt, winter freeze
       
       technical_params:
