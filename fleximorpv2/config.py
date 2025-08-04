@@ -20,7 +20,7 @@ class TechnologyConfig:
     api_endpoint: Optional[str] = None
     cost_per_mw: float = 0.0
     capacity_factor: float = 0.0
-    technical_params: Dict[str, Any] = None
+    technical_params: Optional[Dict[str, Any]] = None
     
     def __post_init__(self):
         if self.technical_params is None:
@@ -51,7 +51,7 @@ class SiteConfig:
         }
 
 
-def load_config(site_name: str, config_dir: str = None) -> SiteConfig:
+def load_config(site_name: str, config_dir: Optional[str] = None) -> SiteConfig:
     """
     Load configuration for a specific site.
     
@@ -69,7 +69,7 @@ def load_config(site_name: str, config_dir: str = None) -> SiteConfig:
     if config_dir is None:
         # Default to data/{site_name}/ relative to package root
         package_root = Path(__file__).parent.parent
-        config_dir = package_root / "data" / site_name
+        config_dir = str(package_root / "data" / site_name)
     
     config_path = Path(config_dir) / "config.yaml"
     
@@ -90,7 +90,7 @@ def _parse_config(raw_config: Dict[str, Any]) -> SiteConfig:
     technologies = {}
     for tech_name, tech_data in raw_config.get('technologies', {}).items():
         technologies[tech_name] = TechnologyConfig(
-            enabled=tech_data.get('enabled', False),
+            enabled=tech_data.get('available', False),
             api_endpoint=tech_data.get('api_endpoint'),
             cost_per_mw=tech_data.get('cost_per_mw', 0.0),
             capacity_factor=tech_data.get('capacity_factor', 0.0),

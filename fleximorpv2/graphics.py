@@ -7,6 +7,7 @@ and interactive dashboards.
 """
 
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
@@ -26,7 +27,7 @@ class GraphicsEngine:
     Handles all plotting and visualization needs across the analysis workflow.
     """
     
-    def __init__(self, config: SiteConfig = None):
+    def __init__(self, config: Optional[SiteConfig] = None):
         """Initialize graphics engine."""
         self.config = config
         
@@ -231,10 +232,10 @@ class GraphicsEngine:
         )
         
         return fig
-    
-    def plot_comparison_analysis(self, baseline_results, uncertainty_results, flexible_results) -> plt.Figure:
+    def plot_comparison_analysis(self, baseline_results, uncertainty_results, flexible_results) -> Figure:
         """Create comprehensive comparison plot."""
         
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
         fig, axes = plt.subplots(2, 2, figsize=(15, 12))
         
         # LCOE comparison
@@ -286,7 +287,7 @@ class GraphicsEngine:
         plt.tight_layout()
         return fig
     
-    def save_figure(self, fig, filepath: str, **kwargs):
+    def save_figure(self, fig, filepath: 'str | Path', **kwargs):
         """Save figure to file."""
         
         filepath = Path(filepath)
