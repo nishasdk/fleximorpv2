@@ -227,18 +227,32 @@ class BaselineOptimization:
         
         # Technology capacities
         for tech_name in self.config.get_enabled_technologies():
-            if target.target_type == 'technologies' and tech_name not in target.target_value:
+            # FIXED: Only check tech_name in target_value when target_type is 'technologies'
+            # and target_value is actually a list/iterable
+            if (target.target_type == 'technologies' and 
+                hasattr(target.target_value, '__iter__') and 
+                not isinstance(target.target_value, str) and
+                tech_name not in target.target_value):
                 design_vars[f'{tech_name}_capacity'] = 0.0
             else:
                 design_vars[f'{tech_name}_capacity'] = x[idx]
                 idx += 1
         
-        # Platform design variables
-        design_vars.update({
-            'platform_area': x[idx] if target.target_type != 'location' else 10000,
-            'water_depth': x[idx+1] if target.target_type != 'location' else 50,
-            'distance_to_shore': x[idx+2] if target.target_type != 'location' else 20
-        })
+        # Platform design variables - only add if we have enough variables
+        remaining_vars = len(x) - idx
+        if remaining_vars >= 3:
+            design_vars.update({
+                'platform_area': x[idx] if target.target_type != 'location' else 10000,
+                'water_depth': x[idx+1] if target.target_type != 'location' else 50,
+                'distance_to_shore': x[idx+2] if target.target_type != 'location' else 20
+            })
+        else:
+            # Use defaults if not enough variables
+            design_vars.update({
+                'platform_area': 10000,
+                'water_depth': 50,
+                'distance_to_shore': 20
+            })
         
         return design_vars
     

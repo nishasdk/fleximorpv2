@@ -401,11 +401,11 @@ class TechnologyModel:
         """Determine optimal solar deployment type and return configuration."""
         tech_config = self.config.technologies['solar']
         
-        # Check if deployment options are available
-        if 'deployment_options' not in tech_config:
+        # Check if deployment options are available in technical_params
+        if 'deployment_options' not in tech_config.technical_params:
             return 'land', {'capacity_factor_modifier': 1.0, 'area_per_mw': 4000}
         
-        deployment_options = tech_config['deployment_options']
+        deployment_options = tech_config.technical_params['deployment_options']
         
         # Check if user specified deployment type in design_vars
         if design_vars and 'solar_deployment_type' in design_vars:

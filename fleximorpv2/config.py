@@ -86,16 +86,39 @@ def load_config(site_name: str, config_dir: Optional[str] = None) -> SiteConfig:
 def _parse_config(raw_config: Dict[str, Any]) -> SiteConfig:
     """Parse raw YAML configuration into SiteConfig object."""
     
-    # Parse technologies
+    # Parse technologies with support for hierarchical structure
     technologies = {}
     for tech_name, tech_data in raw_config.get('technologies', {}).items():
-        technologies[tech_name] = TechnologyConfig(
-            enabled=tech_data.get('available', False),
-            api_endpoint=tech_data.get('api_endpoint'),
-            cost_per_mw=tech_data.get('cost_per_mw', 0.0),
-            capacity_factor=tech_data.get('capacity_factor', 0.0),
-            technical_params=tech_data.get('technical_params', {})
-        )
+        # Handle hierarchical technologies (like hydro with subtypes)
+        if tech_name == 'hydro' and 'available' in tech_data:
+            # Parse hydro subtechnologies
+            for subtech_name, subtech_data in tech_data.items():
+                if isinstance(subtech_data, dict) and 'available' in subtech_data:
+                    if subtech_data.get('available', False):
+                        full_tech_name = f'hydro_{subtech_name}'
+                        technologies[full_tech_name] = TechnologyConfig(
+                            enabled=True,
+                            api_endpoint=subtech_data.get('api_endpoint'),
+                            cost_per_mw=subtech_data.get('cost_per_mw', tech_data.get('cost_per_mw', 0.0)),
+                            capacity_factor=subtech_data.get('capacity_factor', tech_data.get('capacity_factor', 0.0)),
+                            technical_params=subtech_data.get('technical_params', {})
+                        )
+        else:
+            # Handle regular technologies (including solar with deployment_options)
+            # Extract special fields that should be preserved
+            tech_config_data = {
+                'enabled': tech_data.get('available', False),
+                'api_endpoint': tech_data.get('api_endpoint'),
+                'cost_per_mw': tech_data.get('cost_per_mw', 0.0),
+                'capacity_factor': tech_data.get('capacity_factor', 0.0),
+                'technical_params': tech_data.get('technical_params', {})
+            }
+            
+            # For solar, include deployment_options in technical_params if present
+            if tech_name == 'solar' and 'deployment_options' in tech_data:
+                tech_config_data['technical_params']['deployment_options'] = tech_data['deployment_options']
+            
+            technologies[tech_name] = TechnologyConfig(**tech_config_data)
     
     return SiteConfig(
         name=raw_config['site']['name'],
