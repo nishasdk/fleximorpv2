@@ -123,7 +123,7 @@ technologies:
     potential_resource: "moderate"  # Bay of Fundy wave resource exists
     industry_impact: "critical"     # Would disrupt lobster fishing
     
-  tidal:
+  hydro:
     enabled: false
     exclusion_reason: "Extreme tidal range creates significant engineering challenges"
     potential_resource: "high"      # Bay of Fundy tidal resource
