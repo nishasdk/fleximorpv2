@@ -42,18 +42,18 @@ data_sources:
 design_variables:
   # NEW: Tech mix selection approach
   tech_mix_known: true  # User specifies technologies, system optimizes capacities
-  technology_selection: ["wind", "solar", "hydro_river_flow"]  # Selected technologies
+  technology_selection: ["wind", "solar", "hydro"]  # Selected technologies
 
   technology_mix:
     status: "known"  # Changed from "unknown"
     constraints:
-      allowed_technologies: ["wind", "solar", "hydro_river_flow"]  # Updated with river flow
+      allowed_technologies: ["wind", "solar", "hydro"]  # Updated with river flow
       min_technologies: 1
       max_technologies: 3  # Updated to allow all three
       environmental_restrictions:
         wind: "Minimize impact on bird migration routes and traditional hunting areas"
         solar: "Consider seasonal ice conditions and deployment type optimization"
-        hydro_river_flow: "Ensure fish passage and minimal sediment impact"
+        hydro: "Ensure fish passage and minimal sediment impact"
 
   # ENHANCED: Location with exclusion/preferred zones
   location:
@@ -106,7 +106,7 @@ design_variables:
       individual_tech_limits:
         wind: [0.05, 1.0]      # Small wind turbines
         solar: [0.05, 1.5]     # Land or floating solar
-        hydro_river_flow: [0.02, 0.5]  # River-based flow systems
+        hydro: [0.02, 0.5]  # River-based flow systems
       community_load: 0.5      # MW average community load
 
 # ENHANCED: Technology specifications with hydro category and solar deployment options
@@ -175,7 +175,7 @@ technologies:
       ice_resistant: true
 
   # Hydro category - river flow for Alaska
-  hydro_river_flow:
+  hydro:
     enabled: true
     environmental_impact: "medium"
     ecosystem_concerns:

@@ -2,14 +2,14 @@
 Test script to verify Latin Hypercube Sampling implementation.
 """
 
-from fleximorpv2.config import load_site_config
+from fleximorpv2.config import load_config
 from fleximorpv2.uncertainty_analysis import UncertaintyAnalysis
 
 def test_sampling_methods():
     """Test both Monte Carlo and Latin Hypercube sampling."""
     
     # Load Alaska config
-    config = load_site_config("alaska")
+    config = load_config("alaska")
     analyzer = UncertaintyAnalysis(config)
     
     # Test baseline design

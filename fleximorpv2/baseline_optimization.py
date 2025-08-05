@@ -271,15 +271,14 @@ class BaselineOptimization:
         # Extract capacities
         technology_capacities = {
             tech: design_vars.get(f"{tech}_capacity", 0.0)
-            for tech in ["wind", "solar", "hydro_river_flow"]
+            for tech in self.config.get_enabled_technologies()
         }
         total_capacity = sum(technology_capacities.values())
 
         # Calculate CapEx manually
         capex_per_mw = {
-            "wind": self.config.technologies["wind"].cost_per_mw,
-            "solar": self.config.technologies["solar"].cost_per_mw,
-            "hydro_river_flow": self.config.technologies["hydro_river_flow"].cost_per_mw,
+            tech: self.config.technologies[tech].cost_per_mw
+            for tech in self.config.get_enabled_technologies()
         }
         total_capex = sum(
             technology_capacities[tech] * capex_per_mw[tech]

@@ -86,6 +86,11 @@ class TechnologyModel:
                 'area_per_mw': 500,  # m² per MW
                 'load_per_mw': 120,  # tonnes per MW
                 'availability_factor': 0.90
+            },
+            'hydro': {
+                'area_per_mw': 100,  # m² per MW
+                'load_per_mw': 150,  # tonnes per MW
+                'availability_factor': 0.85
             }
         }
     
@@ -160,7 +165,7 @@ class TechnologyModel:
             return self._calculate_solar_performance(capacity, resource_data, design_vars)
         elif tech_name == 'wave':
             return self._calculate_wave_performance(capacity, resource_data)
-        elif tech_name.startswith('hydro_river_flow'):
+        elif tech_name == 'hydro':
             return self._calculate_hydro_performance(tech_name, capacity, resource_data)
         else:
             raise ValueError(f"Unknown technology: {tech_name}")
@@ -493,36 +498,18 @@ class TechnologyModel:
                                    resource_data: ResourceData) -> TechnologyPerformance:
         """Calculate hydro technology performance (river flow, wave, tidal)."""
         # Get hydro configuration
-        hydro_config = self.config.technologies.get('hydro_river_flow', {})
+        hydro_config = self.config.technologies.get('hydro', {})
         
-        # Determine hydro subtype
-        if 'river_flow' in tech_name:
-            return self._calculate_river_flow_performance(capacity, resource_data, hydro_config)
-        elif 'wave' in tech_name:
-            return self._calculate_wave_performance(capacity, resource_data)
-        elif 'tidal' in tech_name:
-            return self._calculate_tidal_performance(capacity, resource_data, hydro_config)
-        else:
-            # Default hydro performance
-            return TechnologyPerformance(
-                capacity=capacity,
-                capacity_factor=0.25,
-                annual_energy=capacity * 0.25 * 8760,
-                availability=0.90,
-                degradation_rate=0.01,
-                space_requirement=capacity * 500,
-                load_requirement=capacity * 100
-            )
+        # For this project, we assume hydro is river flow
+        return self._calculate_river_flow_performance(capacity, resource_data, hydro_config)
     
     def _calculate_river_flow_performance(self, 
                                         capacity: float, 
                                         resource_data: ResourceData,
                                         hydro_config: Dict[str, Any]) -> TechnologyPerformance:
         """Calculate river flow turbine performance."""
-        river_flow_config = hydro_config.get('hydro_river_flow', {})
-        
         # Base capacity factor from config
-        base_cf = river_flow_config.get('capacity_factor', 0.25)
+        base_cf = hydro_config.get('capacity_factor', 0.25)
         
         # Apply seasonal variation
         seasonal_variation = river_flow_config.get('seasonal_variation', False)
@@ -665,7 +652,8 @@ class TechnologyModel:
                 opex_rate = {
                     'wind': 0.03,    # 3% of CAPEX per year
                     'solar': 0.015,  # 1.5% of CAPEX per year
-                    'wave': 0.05     # 5% of CAPEX per year (higher maintenance)
+                    'wave': 0.05,    # 5% of CAPEX per year (higher maintenance)
+                    'hydro': 0.04    # 4% of CAPEX per year
                 }.get(tech_name, 0.03)
                 
                 tech_opex = tech_capex * opex_rate
