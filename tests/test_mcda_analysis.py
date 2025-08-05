@@ -8,7 +8,7 @@ import pandas as pd
 from unittest.mock import Mock, patch
 
 from fleximorpv2.sensitivity_analysis import SensitivityAnalysis
-from fleximorpv2.config import load_site_config
+from fleximorpv2.config import load_config
 
 
 class TestMCDAAnalysis:

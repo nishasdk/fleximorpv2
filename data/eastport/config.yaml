@@ -83,7 +83,7 @@ design_variables:
 # Technology specifications with fishing industry considerations
 technologies:
   wind:
-    available: true
+    enabled: true
     environmental_impact: "medium"
     ecosystem_concerns:
       - "Seabird migration disruption (significant flyway)"
@@ -101,7 +101,7 @@ technologies:
       foundation_type: "jacket" # Suitable for deeper nearshore
       
   solar:
-    available: true
+    enabled: true
     environmental_impact: "low"
     ecosystem_concerns:
       - "Minimal marine ecosystem impact"
@@ -118,13 +118,13 @@ technologies:
       ice_resistant: true      # Winter ice conditions
       
   wave:
-    available: false
+    enabled: false
     exclusion_reason: "Conflicts with lobster fishing industry - primary economic driver"
     potential_resource: "moderate"  # Bay of Fundy wave resource exists
     industry_impact: "critical"     # Would disrupt lobster fishing
     
   tidal:
-    available: false
+    enabled: false
     exclusion_reason: "Extreme tidal range creates significant engineering challenges"
     potential_resource: "high"      # Bay of Fundy tidal resource
     technical_challenges: "extreme tidal range (6m), strong currents"

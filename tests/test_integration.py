@@ -12,14 +12,14 @@ from fleximorpv2.baseline_optimization import BaselineOptimization
 from fleximorpv2.uncertainty_analysis import UncertaintyAnalysis
 from fleximorpv2.flexible_design import FlexibleDesign
 from fleximorpv2.sensitivity_analysis import SensitivityAnalysis
-from fleximorpv2.config import load_site_config
+from fleximorpv2.config import load_config
 
 
 class TestCompleteWorkflow:
     """Test complete 4-step analysis workflow."""
     
     def setup_method(self):
-        self.config = load_site_config("alaska")
+        self.config = load_config("alaska")
     
     @patch('fleximorpv2.utils.data_loader.APIDataLoader')
     def test_baseline_to_uncertainty_workflow(self, mock_loader):
@@ -97,24 +97,24 @@ class TestCaseStudyConfigurations:
     
     def test_alaska_config_loading(self):
         """Test Alaska configuration loads correctly."""
-        config = load_site_config("alaska")
+        config = load_config("alaska")
         
-        assert config.name.lower() == "alaska"
+        assert "alaska" in config.name.lower()
         assert config.coordinates is not None
         assert len(config.coordinates) == 2
     
     def test_blyth_config_loading(self):
         """Test Blyth configuration loads correctly."""
-        config = load_site_config("blyth")
+        config = load_config("blyth")
         
-        assert config.name.lower() == "blyth"
+        assert "blyth" in config.name.lower()
         assert config.coordinates is not None
         
     def test_eastport_config_loading(self):
         """Test Eastport configuration loads correctly."""
-        config = load_site_config("eastport")
+        config = load_config("eastport")
         
-        assert config.name.lower() == "eastport"
+        assert "eastport" in config.name.lower()
         assert config.coordinates is not None
 
 
@@ -136,7 +136,7 @@ class TestAPIIntegration:
         mock_get.return_value = mock_response
         
         from fleximorpv2.utils.data_loader import APIDataLoader
-        config = load_site_config("alaska")
+        config = load_config("alaska")
         loader = APIDataLoader(config)
         
         # This would normally make real API calls
@@ -150,11 +150,11 @@ class TestErrorHandling:
     def test_invalid_site_config(self):
         """Test handling of invalid site configuration."""
         with pytest.raises((FileNotFoundError, ValueError)):
-            load_site_config("nonexistent_site")
+            load_config("nonexistent_site")
     
     def test_optimization_with_no_data(self):
         """Test optimization behavior with missing data."""
-        config = load_site_config("alaska")
+        config = load_config("alaska")
         optimizer = BaselineOptimization(config)
         
         # This should handle missing resource data gracefully

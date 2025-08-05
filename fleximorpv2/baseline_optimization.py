@@ -137,6 +137,9 @@ class BaselineOptimization:
         
         # Load data for optimization
         self._load_optimization_data(target)
+
+        if not hasattr(self, 'resource_data') or not self.resource_data:
+            raise ValueError("Resource data could not be loaded for optimization.")
         
         # Set up objective function
         objective_func = self._create_objective_function(target)

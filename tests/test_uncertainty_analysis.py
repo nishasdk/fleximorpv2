@@ -7,14 +7,14 @@ import numpy as np
 from unittest.mock import Mock, patch
 
 from fleximorpv2.uncertainty_analysis import UncertaintyAnalysis, UncertaintyParameters, UncertaintyResults
-from fleximorpv2.config import SiteConfig, load_site_config
+from fleximorpv2.config import SiteConfig, load_config
 
 
 class TestUncertaintyAnalysis:
     """Test uncertainty analysis functionality."""
     
     def setup_method(self):
-        self.config = load_site_config("alaska")
+        self.config = load_config("alaska")
         self.analyzer = UncertaintyAnalysis(self.config)
     
     def test_initialization(self):

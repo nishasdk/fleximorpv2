@@ -118,7 +118,7 @@ design_variables:
 # ENHANCED: Technology specifications with hydro category and solar deployment options
 technologies:
   wind:
-    available: true
+    enabled: true
     environmental_impact: "medium"
     ecosystem_concerns:
       - "Bird migration disruption (minimal with proper siting)"
@@ -134,7 +134,7 @@ technologies:
       cold_weather_package: true
       
   solar:
-    available: true
+    enabled: true
     environmental_impact: "low"
     ecosystem_concerns:
       - "Minimal wildlife impact with proper deployment"
@@ -146,7 +146,7 @@ technologies:
     # NEW: Deployment options with automatic optimization
     deployment_options:
       land:
-        available: true
+        enabled: true
         cost_multiplier: 0.8  # 20% cheaper than floating
         area_per_mw: 3000    # m² per MW (less than floating)
         maintenance_factor: 1.1  # 10% easier maintenance
@@ -154,7 +154,7 @@ technologies:
           max_distance_from_shore: 2.0  # km
           suitable_terrain: "flat_permafrost"
       floating:
-        available: true
+        enabled: true
         cost_multiplier: 1.0  # Base cost
         area_per_mw: 4000    # m² per MW (includes platform)
         maintenance_factor: 0.8  # 20% harder maintenance
@@ -162,7 +162,7 @@ technologies:
           min_water_depth: 3.0  # meters
           ice_resistant: true
       both:
-        available: true
+        enabled: true
         optimization_strategy: "minimize_lcoe"  # Auto-choose based on economics
     
     technical_params:
@@ -173,7 +173,7 @@ technologies:
       
   # NEW: Hydro category with tidal current focus for rivers
   hydro:
-    available: true
+    enabled: true
     environmental_impact: "medium"
     ecosystem_concerns:
       - "Fish passage must be maintained"
@@ -182,12 +182,12 @@ technologies:
     
     # Tidal range not applicable for rivers
     tidal_range:
-      available: false
+      enabled: false
       reason: "Minimal tidal range in riverine location"
     
     # PRIMARY: Tidal current using river flow
     tidal_current:
-      available: true
+      enabled: true
       cost_per_mw: 3500000  # USD, higher cost for specialized equipment
       capacity_factor: 0.25  # Variable based on seasonal river flow
       resource_type: "river_flow"  # vs "ocean_tidal"
@@ -213,7 +213,7 @@ technologies:
     
     # Wave energy not applicable
     wave:
-      available: false
+      enabled: false
       reason: "Riverine location with minimal wave resource"
       seasonal_access: "Bristol Bay (summer only)"
 

@@ -7,7 +7,7 @@ import numpy as np
 from unittest.mock import Mock, patch
 
 from fleximorpv2.baseline_optimization import BaselineOptimization, OptimizationTarget, BaselineResults
-from fleximorpv2.config import SiteConfig, load_site_config
+from fleximorpv2.config import SiteConfig, load_config
 
 
 class TestBaselineOptimization:
@@ -15,7 +15,7 @@ class TestBaselineOptimization:
     
     def setup_method(self):
         """Setup test fixtures."""
-        self.config = load_site_config("alaska")
+        self.config = load_config("alaska")
         self.optimizer = BaselineOptimization(self.config)
     
     def test_initialization(self):
@@ -111,7 +111,7 @@ class TestOptimizationConstraints:
     """Test optimization constraint handling."""
     
     def setup_method(self):
-        self.config = load_site_config("alaska")
+        self.config = load_config("alaska")
         self.optimizer = BaselineOptimization(self.config)
     
     def test_constraint_penalties(self):
@@ -120,31 +120,36 @@ class TestOptimizationConstraints:
             'lcoe': 85.0,
             'npv': 1000000,
             'capex': 60000000,  # Exceeds max investment
-            'capacity_factor': 0.25  # Below minimum
+            'capacity_factor': 0.25,  # Below minimum
+            'annual_energy': 1000000,
         }
         
+        original_lcoe = performance['lcoe']
         design_vars = {'wind_capacity': 100}
         target = OptimizationTarget('production', 1000000)
         
         penalized = self.optimizer._apply_constraints(performance, design_vars, target)
         
         # LCOE should be penalized
-        assert penalized['lcoe'] > performance['lcoe']
+        assert penalized['lcoe'] > original_lcoe
     
     def test_production_target_constraint(self):
         """Test production target constraint."""
         performance = {
             'lcoe': 85.0,
-            'annual_energy': 800000  # Below target
+            'annual_energy': 800000,  # Below target
+            'capex': 50000000,
+            'capacity_factor': 0.35,
         }
         
+        original_lcoe = performance['lcoe']
         design_vars = {'wind_capacity': 100}
         target = OptimizationTarget('production', 1000000)  # 1 GWh target
         
         penalized = self.optimizer._apply_constraints(performance, design_vars, target)
         
         # Should add penalty for missing production target
-        assert penalized['lcoe'] > performance['lcoe']
+        assert penalized['lcoe'] > original_lcoe
 
 
 @pytest.fixture
@@ -154,6 +159,17 @@ def mock_config():
     config.name = "TestSite"
     config.coordinates = (60.0, -150.0)
     config.get_enabled_technologies.return_value = ['wind', 'solar']
+
+    # Mock technology configurations
+    wind_tech_config = Mock()
+    wind_tech_config.cost_per_mw = 1600000
+    solar_tech_config = Mock()
+    solar_tech_config.cost_per_mw = 1200000
+    config.technologies = {
+        'wind': wind_tech_config,
+        'solar': solar_tech_config
+    }
+
     config.optimization = {
         'objective': 'minimize_lcoe',
         'constraints': {
