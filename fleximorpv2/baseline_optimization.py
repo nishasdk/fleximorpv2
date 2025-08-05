@@ -28,7 +28,7 @@ class OptimizationTarget:
     """Represents the optimization target specified by user."""
     target_type: str  # 'location', 'technologies', 'production'
     target_value: Any
-    constraints: Dict[str, Any] = None
+    constraints: Optional[Dict[str, Any]] = None
     
     def __post_init__(self):
         if self.constraints is None:
@@ -230,18 +230,32 @@ class BaselineOptimization:
         
         # Technology capacities
         for tech_name in self.config.get_enabled_technologies():
-            if target.target_type == 'technologies' and tech_name not in target.target_value:
+            # FIXED: Only check tech_name in target_value when target_type is 'technologies'
+            # and target_value is actually a list/iterable
+            if (target.target_type == 'technologies' and 
+                hasattr(target.target_value, '__iter__') and 
+                not isinstance(target.target_value, str) and
+                tech_name not in target.target_value):
                 design_vars[f'{tech_name}_capacity'] = 0.0
             else:
                 design_vars[f'{tech_name}_capacity'] = x[idx]
                 idx += 1
         
-        # Platform design variables
-        design_vars.update({
-            'platform_area': x[idx] if target.target_type != 'location' else 10000,
-            'water_depth': x[idx+1] if target.target_type != 'location' else 50,
-            'distance_to_shore': x[idx+2] if target.target_type != 'location' else 20
-        })
+        # Platform design variables - only add if we have enough variables
+        remaining_vars = len(x) - idx
+        if remaining_vars >= 3:
+            design_vars.update({
+                'platform_area': x[idx] if target.target_type != 'location' else 10000,
+                'water_depth': x[idx+1] if target.target_type != 'location' else 50,
+                'distance_to_shore': x[idx+2] if target.target_type != 'location' else 20
+            })
+        else:
+            # Use defaults if not enough variables
+            design_vars.update({
+                'platform_area': 10000,
+                'water_depth': 50,
+                'distance_to_shore': 20
+            })
         
         return design_vars
     
@@ -249,6 +263,56 @@ class BaselineOptimization:
                                      design_vars: Dict[str, Any], 
                                      target: OptimizationTarget) -> Dict[str, float]:
         """Evaluate platform performance for given design variables."""
+        
+        # === Hard Constraints on Capacity and CapEx ===
+        max_total_capacity = self.config.optimization.get('constraints', {}).get('max_total_capacity', 2.0)  # MW
+        max_investment = self.config.optimization.get('constraints', {}).get('max_investment', 5_000_000)   # USD
+
+        # Extract capacities
+        technology_capacities = {
+            tech: design_vars.get(f"{tech}_capacity", 0.0)
+            for tech in ["wind", "solar", "hydro_river_flow"]
+        }
+        total_capacity = sum(technology_capacities.values())
+
+        # Calculate CapEx manually
+        capex_per_mw = {
+            "wind": self.config.technologies["wind"].cost_per_mw,
+            "solar": self.config.technologies["solar"].cost_per_mw,
+            "hydro_river_flow": self.config.technologies["hydro_river_flow"].cost_per_mw,
+        }
+        total_capex = sum(
+            technology_capacities[tech] * capex_per_mw[tech]
+            for tech in technology_capacities
+        )
+
+        # Enforce hard limits
+        if total_capacity > max_total_capacity:
+            print(f"❌ Rejecting: total capacity {total_capacity:.2f} MW exceeds {max_total_capacity} MW")
+            # Return penalty dictionary for expected keys
+            return {
+                'lcoe': 1e9,
+                'npv': -1e9,
+                'capex': 1e9,
+                'capacity_factor': 0.0,
+                'annual_energy': 0.0,
+                'irr': 0.0,
+                'opex': 1e9
+            }
+
+        if total_capex > max_investment:
+            print(f"❌ Rejecting: total CapEx ${total_capex:,.0f} exceeds budget ${max_investment:,.0f}")
+            return {
+                'lcoe': 1e9,
+                'npv': -1e9,
+                'capex': 1e9,
+                'capacity_factor': 0.0,
+                'annual_energy': 0.0,
+                'irr': 0.0,
+                'opex': 1e9
+            }
+
+
         
         # Calculate technical performance
         tech_performance = self.tech_model.calculate_performance(
@@ -331,15 +395,45 @@ class BaselineOptimization:
             self.bounds['distance_to_shore']
         ])
         
-        # Run differential evolution
-        result = differential_evolution(
-            objective_func,
-            bounds=bounds_list,
-            maxiter=kwargs.get('maxiter', 1000),
-            popsize=kwargs.get('popsize', 15),
-            seed=kwargs.get('seed', 42),
-            disp=True
-        )
+        # Prepare differential evolution parameters
+        de_params = {
+            'bounds': bounds_list,
+            'maxiter': kwargs.get('maxiter', 1000),
+            'popsize': kwargs.get('popsize', 15),
+            'disp': True
+        }
+        
+        # Handle seed parameter - check if it's supported in current scipy version
+        if 'random_state' in kwargs or 'seed' in kwargs:
+            # Try random_state first (newer scipy versions), fallback to seed
+            random_state = kwargs.get('random_state', kwargs.get('seed', 42))
+            
+            # Check scipy version compatibility
+            try:
+                import scipy
+                scipy_version = tuple(map(int, scipy.__version__.split('.')[:2]))
+                
+                if scipy_version >= (1, 7):  # scipy >= 1.7 uses 'seed'
+                    de_params['seed'] = random_state
+                else:  # older scipy versions might use different parameter
+                    # For older versions, try both and catch errors
+                    de_params['seed'] = random_state
+                    
+            except (ImportError, AttributeError, ValueError):
+                # If we can't determine version, try seed parameter
+                de_params['seed'] = random_state
+        
+        # Run differential evolution with error handling
+        try:
+            result = differential_evolution(objective_func, **de_params)
+        except TypeError as e:
+            if 'seed' in str(e):
+                # Remove seed parameter and try again
+                print("Warning: 'seed' parameter not supported in this scipy version, running without seed")
+                de_params.pop('seed', None)
+                result = differential_evolution(objective_func, **de_params)
+            else:
+                raise e
         
         return result
     
@@ -433,7 +527,7 @@ class BaselineOptimization:
         
         return results
     
-    def save_results(self, output_dir: str = None) -> str:
+    def save_results(self, output_dir: Optional[str] = None) -> str:
         """
         Save optimization results to file.
         
@@ -451,7 +545,7 @@ class BaselineOptimization:
         
         if output_dir is None:
             package_root = Path(__file__).parent.parent
-            output_dir = package_root / "data" / self.config.name.lower() / "results" / "baseline"
+            output_dir = str(package_root / "data" / self.config.name.lower() / "results" / "baseline")
         
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)

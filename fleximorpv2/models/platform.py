@@ -192,6 +192,14 @@ class PlatformModel:
     
     def _calculate_structural_efficiency(self) -> float:
         """Calculate structural efficiency metric (0-1)."""
+        if self.platform_specs is None:
+            raise ValueError("Platform must be designed before calculating structural efficiency")
+        if self.platform_specs is None:
+            raise ValueError("Platform must be designed before calculating structural efficiency")
+        if self.platform_specs is None:
+            raise ValueError("Platform must be designed before calculating structural efficiency")
+        if self.platform_specs is None:
+            raise ValueError("Platform must be designed before calculating structural efficiency")
         platform_type = self.platform_specs.platform_type
         base_efficiency = self.platform_types[platform_type]["stability"]
         
@@ -206,6 +214,8 @@ class PlatformModel:
     
     def _calculate_installation_complexity(self) -> float:
         """Calculate installation complexity metric (0-1, lower is better)."""
+        if self.platform_specs is None:
+            raise ValueError("Platform must be designed before calculating installation complexity")
         platform_type = self.platform_specs.platform_type
         
         # Base complexity by platform type
@@ -225,6 +235,8 @@ class PlatformModel:
     
     def _calculate_maintenance_accessibility(self) -> float:
         """Calculate maintenance accessibility metric (0-1, higher is better)."""
+        if self.platform_specs is None:
+            raise ValueError("Platform must be designed before calculating maintenance accessibility")
         platform_type = self.platform_specs.platform_type
         base_accessibility = self.platform_types[platform_type]["maintenance_factor"]
         
@@ -238,6 +250,8 @@ class PlatformModel:
     
     def _calculate_environmental_impact(self) -> float:
         """Calculate environmental impact metric (0-1, lower is better)."""
+        if self.platform_specs is None:
+            raise ValueError("Platform must be designed before calculating environmental impact")
         # Base impact by platform type
         base_impact = {
             "fixed": 0.7,  # Higher seafloor impact
@@ -259,7 +273,10 @@ class PlatformModel:
         base_factor = self.platform_types[platform_type]["cost_factor"]
         
         # Adjust based on complexity factors
-        complexity_adjustment = 1.0 + self.performance.installation_complexity * 0.3
+        if self.performance is not None:
+            complexity_adjustment = 1.0 + self.performance.installation_complexity * 0.3
+        else:
+            complexity_adjustment = 1.0  # Default adjustment if performance is not set
         
         return base_factor * complexity_adjustment
     
@@ -268,6 +285,19 @@ class PlatformModel:
         if self.platform_specs is None:
             raise ValueError("Platform must be designed before calculating costs")
         
+        # Ensure performance metrics are calculated
+        if self.performance is None:
+            # Use current platform_specs to calculate performance
+            self.calculate_performance({
+                'platform_area': self.platform_specs.area,
+                'water_depth': self.platform_specs.water_depth,
+                'distance_to_shore': self.platform_specs.distance_to_shore
+            })
+
+        # Ensure self.performance is set after calculation
+        if self.performance is None:
+            raise ValueError("Platform performance could not be calculated.")
+
         # Base costs per m² by platform type (GBP)
         base_costs = {
             "fixed": 15000,  # GBP/m²
@@ -324,7 +354,7 @@ class PlatformModel:
             },
             'operational_constraints': {
                 'max_maintenance_downtime': 0.05,  # 5% of time
-                'accessibility_requirement': self.performance.maintenance_accessibility
+                'accessibility_requirement': self.performance.maintenance_accessibility if self.performance is not None else 0.0
             }
         }
     
@@ -354,10 +384,11 @@ class PlatformModel:
             issues.append(f"Insufficient load capacity: {self.platform_specs.max_load_capacity:.0f} < {required_load:.0f} tonnes")
         
         # Check platform type vs water depth
-        platform_type = self.platform_specs.platform_type
-        max_depth = self.platform_types[platform_type]["max_depth"]
-        if self.platform_specs.water_depth > max_depth:
-            issues.append(f"Water depth {self.platform_specs.water_depth:.0f}m exceeds limit for {platform_type} platform ({max_depth}m)")
+        if self.platform_specs is not None:
+            platform_type = self.platform_specs.platform_type
+            max_depth = self.platform_types[platform_type]["max_depth"]
+            if self.platform_specs.water_depth > max_depth:
+                issues.append(f"Water depth {self.platform_specs.water_depth:.0f}m exceeds limit for {platform_type} platform ({max_depth}m)")
         
         # Check minimum distances
         if self.platform_specs.distance_to_shore < 5:

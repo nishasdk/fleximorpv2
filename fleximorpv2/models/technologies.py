@@ -116,7 +116,7 @@ class TechnologyModel:
             
             if capacity > 0:
                 performance = self._calculate_technology_performance(
-                    tech_name, capacity, resource_data
+                    tech_name, capacity, resource_data, design_vars
                 )
                 self.performance_data[tech_name] = performance
                 
@@ -150,15 +150,18 @@ class TechnologyModel:
     def _calculate_technology_performance(self, 
                                         tech_name: str, 
                                         capacity: float, 
-                                        resource_data: ResourceData) -> TechnologyPerformance:
+                                        resource_data: ResourceData,
+                                        design_vars: Optional[Dict[str, Any]] = None) -> TechnologyPerformance:
         """Calculate performance for a specific technology."""
         
         if tech_name == 'wind':
             return self._calculate_wind_performance(capacity, resource_data)
         elif tech_name == 'solar':
-            return self._calculate_solar_performance(capacity, resource_data)
+            return self._calculate_solar_performance(capacity, resource_data, design_vars)
         elif tech_name == 'wave':
             return self._calculate_wave_performance(capacity, resource_data)
+        elif tech_name.startswith('hydro_river_flow'):
+            return self._calculate_hydro_performance(tech_name, capacity, resource_data)
         else:
             raise ValueError(f"Unknown technology: {tech_name}")
     
@@ -173,7 +176,8 @@ class TechnologyModel:
         wind_speeds = resource_data.wind_speed
         
         # Apply height correction if needed
-        hub_height = tech_config.technical_params.get('hub_height', params['hub_height_default'])
+        technical_params = tech_config.technical_params if tech_config.technical_params is not None else {}
+        hub_height = technical_params.get('hub_height', params['hub_height_default'])
         if hub_height != 10:  # Assuming data is at 10m
             wind_speeds = wind_speeds * (hub_height / 10) ** 0.143  # Wind shear law
         
@@ -194,7 +198,8 @@ class TechnologyModel:
         annual_energy = capacity_factor * capacity * 8760  # MWh/year
         
         # Apply availability factor
-        availability = tech_config.technical_params.get('availability', 0.95)
+        technical_params = tech_config.technical_params if tech_config.technical_params is not None else {}
+        availability = technical_params.get('availability', 0.95)
         annual_energy *= availability
         
         return TechnologyPerformance(
@@ -224,14 +229,21 @@ class TechnologyModel:
     
     def _calculate_solar_performance(self, 
                                     capacity: float, 
-                                    resource_data: ResourceData) -> TechnologyPerformance:
-        """Calculate solar PV performance."""
+                                    resource_data: ResourceData,
+                                    design_vars: Optional[Dict[str, Any]] = None) -> TechnologyPerformance:
+        """Calculate solar PV performance with deployment-specific enhancements."""
         params = self.technology_params['solar']
         tech_config = self.config.technologies['solar']
+        
+        # Determine deployment type and get performance modifiers
+        deployment_type, deployment_config = self._determine_solar_deployment_type(design_vars)
         
         # Get solar irradiance and temperature
         irradiance = resource_data.solar_irradiance  # W/m²
         temperature = resource_data.temperature  # °C
+        
+        # Calculate seasonal factor for ice impact (Alaska-specific)
+        seasonal_factor = self._calculate_seasonal_ice_factor(resource_data.timestamps, deployment_config)
         
         # Calculate power output for each timestep
         power_outputs = np.zeros_like(irradiance)
@@ -240,9 +252,21 @@ class TechnologyModel:
             # Basic solar PV equation
             power_ratio = irr / params['standard_irradiance']
             
-            # Temperature correction
-            temp_diff = temp - params['standard_temperature']
+            # Temperature correction with enhanced cooling for floating
+            if deployment_type == 'floating':
+                # Water cooling reduces effective operating temperature
+                cooling_benefit = deployment_config.get('additional_benefits', {}).get('water_cooling_effect', 0.0)
+                effective_temp = temp - (cooling_benefit * 100 * 0.5)  # Approximate cooling effect
+            else:
+                effective_temp = temp
+            
+            temp_diff = effective_temp - params['standard_temperature']
             temp_factor = 1 + params['temperature_coefficient'] * temp_diff
+            
+            # Apply albedo reflection benefit for floating systems
+            if deployment_type == 'floating':
+                albedo_boost = deployment_config.get('additional_benefits', {}).get('albedo_reflection', 0.0)
+                power_ratio *= (1 + albedo_boost)
             
             power_outputs[i] = power_ratio * temp_factor
         
@@ -254,6 +278,18 @@ class TechnologyModel:
         tracking = tech_config.technical_params.get('tracking', False)
         if tracking:
             power_outputs *= params['tracking_gain']
+        
+        # Apply deployment-specific capacity factor modifier
+        cf_modifier = deployment_config.get('capacity_factor_modifier', 1.0)
+        power_outputs *= cf_modifier
+        
+        # Apply reduced soiling benefit for floating systems
+        if deployment_type == 'floating':
+            soiling_reduction = deployment_config.get('additional_benefits', {}).get('reduced_soiling', 0.0)
+            power_outputs *= (1 + soiling_reduction)
+        
+        # Apply seasonal ice impact
+        power_outputs *= seasonal_factor
         
         # Clip to maximum capacity
         power_outputs = np.clip(power_outputs, 0, 1.0)
@@ -268,14 +304,22 @@ class TechnologyModel:
         availability = tech_config.technical_params.get('availability', 0.98)
         annual_energy *= availability
         
+        # Get space and load requirements based on deployment type
+        area_per_mw = deployment_config.get('area_per_mw', params['area_per_mw'])
+        load_per_mw = params['load_per_mw']
+        
+        # Adjust load for floating platforms
+        if deployment_type == 'floating':
+            load_per_mw *= 1.2  # Additional load for floating structure
+        
         return TechnologyPerformance(
             capacity=capacity,
             capacity_factor=capacity_factor * availability,
             annual_energy=annual_energy,
             availability=availability,
             degradation_rate=params['degradation_rate'],
-            space_requirement=capacity * params['area_per_mw'],
-            load_requirement=capacity * params['load_per_mw']
+            space_requirement=capacity * area_per_mw,
+            load_requirement=capacity * load_per_mw
         )
     
     def _calculate_wave_performance(self, 
@@ -354,6 +398,196 @@ class TechnologyModel:
         efficiency = max(0.0, height_efficiency * period_efficiency)
         
         return efficiency
+    
+    def _determine_solar_deployment_type(self, design_vars: Optional[Dict[str, Any]] = None) -> Tuple[str, Dict[str, Any]]:
+        """Determine optimal solar deployment type and return configuration."""
+        tech_config = self.config.technologies['solar']
+        
+        # Check if deployment options are available in technical_params
+        if 'deployment_options' not in tech_config.technical_params:
+            return 'land', {'capacity_factor_modifier': 1.0, 'area_per_mw': 4000}
+        
+        deployment_options = tech_config.technical_params['deployment_options']
+        
+        # Check if user specified deployment type in design_vars
+        if design_vars and 'solar_deployment_type' in design_vars:
+            specified_type = design_vars['solar_deployment_type']
+            if specified_type in deployment_options and deployment_options[specified_type]['available']:
+                return specified_type, deployment_options[specified_type]
+        
+        # Check if 'both' option is available and should be optimized
+        if 'both' in deployment_options and deployment_options['both']['available']:
+            # Implement automatic deployment type selection
+            return self._optimize_solar_deployment_type(deployment_options)
+        
+        # Default to first available deployment type
+        for deploy_type, config in deployment_options.items():
+            if config.get('available', False) and deploy_type != 'both':
+                return deploy_type, config
+        
+        # Fallback to land deployment
+        return 'land', {'capacity_factor_modifier': 1.0, 'area_per_mw': 4000}
+    
+    def _optimize_solar_deployment_type(self, deployment_options: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+        """Automatically select optimal solar deployment type based on performance and cost."""
+        land_config = deployment_options.get('land', {})
+        floating_config = deployment_options.get('floating', {})
+        both_config = deployment_options.get('both', {})
+        
+        # Get optimization strategy
+        strategy = both_config.get('optimization_strategy', 'minimize_lcoe')
+        performance_weighting = both_config.get('performance_weighting', 'capacity_factor')
+        
+        # Simple decision logic based on capacity factor advantage
+        if strategy == 'minimize_lcoe':
+            # Calculate relative performance advantage
+            land_cf_modifier = land_config.get('capacity_factor_modifier', 1.0)
+            floating_cf_modifier = floating_config.get('capacity_factor_modifier', 1.0)
+            
+            # Calculate relative cost
+            land_cost_multiplier = land_config.get('cost_multiplier', 1.0)
+            floating_cost_multiplier = floating_config.get('cost_multiplier', 1.0)
+            
+            # Simple LCOE approximation: cost / performance
+            land_lcoe_factor = land_cost_multiplier / land_cf_modifier
+            floating_lcoe_factor = floating_cost_multiplier / floating_cf_modifier
+            
+            # Choose deployment type with better LCOE
+            if floating_lcoe_factor <= land_lcoe_factor:
+                return 'floating', floating_config
+            else:
+                return 'land', land_config
+        
+        # Default to floating if performance weighting favors it
+        if performance_weighting == 'capacity_factor':
+            floating_cf = floating_config.get('capacity_factor_modifier', 1.0)
+            land_cf = land_config.get('capacity_factor_modifier', 1.0)
+            
+            if floating_cf > land_cf:
+                return 'floating', floating_config
+        
+        # Default fallback to land
+        return 'land', land_config
+    
+    def _calculate_seasonal_ice_factor(self, timestamps: np.ndarray, deployment_config: Dict[str, Any]) -> float:
+        """Calculate seasonal ice impact factor for Arctic deployments."""
+        # Check if this is a floating deployment with ice impact
+        if 'seasonal_ice_impact' not in deployment_config:
+            return 1.0  # No ice impact for land deployments
+        
+        ice_impact_factor = deployment_config['seasonal_ice_impact']
+        
+        # Simplified seasonal calculation
+        # Assume winter months (Nov-Mar) have reduced performance
+        # This would need actual timestamp analysis in a full implementation
+        winter_fraction = 0.4  # Approximate fraction of year affected by ice
+        
+        # Calculate weighted average: normal performance most of year, reduced in winter
+        seasonal_factor = (1.0 * (1 - winter_fraction)) + (ice_impact_factor * winter_fraction)
+        
+        return seasonal_factor
+    
+    def _calculate_hydro_performance(self, 
+                                   tech_name: str,
+                                   capacity: float, 
+                                   resource_data: ResourceData) -> TechnologyPerformance:
+        """Calculate hydro technology performance (river flow, wave, tidal)."""
+        # Get hydro configuration
+        hydro_config = self.config.technologies.get('hydro_river_flow', {})
+        
+        # Determine hydro subtype
+        if 'river_flow' in tech_name:
+            return self._calculate_river_flow_performance(capacity, resource_data, hydro_config)
+        elif 'wave' in tech_name:
+            return self._calculate_wave_performance(capacity, resource_data)
+        elif 'tidal' in tech_name:
+            return self._calculate_tidal_performance(capacity, resource_data, hydro_config)
+        else:
+            # Default hydro performance
+            return TechnologyPerformance(
+                capacity=capacity,
+                capacity_factor=0.25,
+                annual_energy=capacity * 0.25 * 8760,
+                availability=0.90,
+                degradation_rate=0.01,
+                space_requirement=capacity * 500,
+                load_requirement=capacity * 100
+            )
+    
+    def _calculate_river_flow_performance(self, 
+                                        capacity: float, 
+                                        resource_data: ResourceData,
+                                        hydro_config: Dict[str, Any]) -> TechnologyPerformance:
+        """Calculate river flow turbine performance."""
+        river_flow_config = hydro_config.get('hydro_river_flow', {})
+        
+        # Base capacity factor from config
+        base_cf = river_flow_config.get('capacity_factor', 0.25)
+        
+        # Apply seasonal variation
+        seasonal_variation = river_flow_config.get('seasonal_variation', False)
+        if seasonal_variation:
+            # Simplified seasonal flow modeling
+            # Spring melt increases flow, winter decreases it
+            seasonal_cf_modifier = 1.0  # Would need actual flow data for proper calculation
+        else:
+            seasonal_cf_modifier = 1.0
+        
+        capacity_factor = base_cf * seasonal_cf_modifier
+        annual_energy = capacity_factor * capacity * 8760
+        
+        # Apply availability
+        availability = 0.85  # Lower than solar/wind due to maintenance complexity
+        annual_energy *= availability
+        
+        # Get technical parameters
+        tech_params = river_flow_config.get('technical_params', {})
+        area_per_mw = 100  # Small footprint for river turbines
+        load_per_mw = 150  # Heavy underwater equipment
+        
+        return TechnologyPerformance(
+            capacity=capacity,
+            capacity_factor=capacity_factor * availability,
+            annual_energy=annual_energy,
+            availability=availability,
+            degradation_rate=0.015,  # Higher due to underwater environment
+            space_requirement=capacity * area_per_mw,
+            load_requirement=capacity * load_per_mw
+        )
+    
+    def _calculate_tidal_performance(self, 
+                                   capacity: float, 
+                                   resource_data: ResourceData,
+                                   hydro_config: Dict[str, Any]) -> TechnologyPerformance:
+        """Calculate tidal energy converter performance."""
+        tidal_config = hydro_config.get('tidal_range', {})
+        
+        if not tidal_config.get('available', False):
+            # Return minimal performance for unavailable tidal
+            return TechnologyPerformance(
+                capacity=capacity,
+                capacity_factor=0.0,
+                annual_energy=0.0,
+                availability=0.0,
+                degradation_rate=0.02,
+                space_requirement=capacity * 500,
+                load_requirement=capacity * 200
+            )
+        
+        # Tidal-specific calculations would go here
+        # For now, return basic performance
+        capacity_factor = 0.35
+        annual_energy = capacity_factor * capacity * 8760 * 0.90
+        
+        return TechnologyPerformance(
+            capacity=capacity,
+            capacity_factor=capacity_factor * 0.90,
+            annual_energy=annual_energy,
+            availability=0.90,
+            degradation_rate=0.02,
+            space_requirement=capacity * 500,
+            load_requirement=capacity * 200
+        )
     
     def get_technology_requirements(self, design_vars: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
         """

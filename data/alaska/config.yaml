@@ -17,50 +17,44 @@ data_sources:
     primary: "nasa_power"    # Historical weather data
     secondary: "openweather" # Current conditions and forecasts
     cache_duration: 24       # hours
-    
+
   wind_resource:
     source: "nrel"
     hub_heights: [30, 50, 80]  # Lower heights for small community
     cache_duration: 168        # 1 week
-    
+
   solar_resource:
     source: "nrel"
     tilt_angles: [55, 60, 65]  # High latitude optimized
     cache_duration: 168
-    
-  # NEW: Hydro resource assessment for river-based tidal systems
+
+  # ENHANCED: Hydro resource assessment for river-based systems
   hydro_resource:
-    tidal_current:
-      source: "usgs_river_flow"  # US Geological Survey
-      backup_source: "model_based"  # Custom flow model
-      parameters:
-        flow_measurement_station: "15302000"  # Kvichak River station
-        historical_years: 10
-        seasonal_analysis: true
-      cache_duration: 720  # 30 days, river flow changes slower
-    
-  wave_resource:
-    source: "copernicus"
-    applicable: false  # Riverine location, limited wave resource
-    seasonal_access: "Bristol Bay (summer only)"
+    source: "usgs_river_flow"  # US Geological Survey
+    backup_source: "model_based"  # Custom flow model
+    parameters:
+      flow_measurement_station: "15302000"  # Kvichak River station
+      historical_years: 10
+      seasonal_analysis: true
+    cache_duration: 720  # 30 days, river flow changes slower
 
 # ENHANCED: User-configurable design variables with zones and tech mix selection
 design_variables:
   # NEW: Tech mix selection approach
   tech_mix_known: true  # User specifies technologies, system optimizes capacities
-  technology_selection: ["wind", "solar", "hydro_tidal"]  # Selected technologies
-  
+  technology_selection: ["wind", "solar", "hydro_river_flow"]  # Selected technologies
+
   technology_mix:
     status: "known"  # Changed from "unknown"
     constraints:
-      allowed_technologies: ["wind", "solar", "hydro_tidal"]  # Updated with tidal
+      allowed_technologies: ["wind", "solar", "hydro_river_flow"]  # Updated with river flow
       min_technologies: 1
       max_technologies: 3  # Updated to allow all three
       environmental_restrictions:
         wind: "Minimize impact on bird migration routes and traditional hunting areas"
         solar: "Consider seasonal ice conditions and deployment type optimization"
-        hydro_tidal: "Ensure fish passage and minimal sediment impact"
-      
+        hydro_river_flow: "Ensure fish passage and minimal sediment impact"
+
   # ENHANCED: Location with exclusion/preferred zones
   location:
     status: "constrained"
@@ -70,7 +64,7 @@ design_variables:
         bounds: [[59.25, -156.0], [59.4, -155.8]]  # Around Igiugig
         depth_range: [5, 25]      # River depth constraints
         shore_distance_range: [0.1, 2.0]  # Very close to shore
-      
+
       # NEW: Exclusion zones (high priority = complete exclusion)
       exclusion_zones:
         - name: "Traditional fishing areas"
@@ -78,7 +72,7 @@ design_variables:
           priority: "high"  # Complete exclusion
           geometry: "polygon"
           coordinates: [[59.30, -155.95], [59.32, -155.93], [59.31, -155.91], [59.29, -155.93]]
-        - name: "Salmon spawning grounds" 
+        - name: "Salmon spawning grounds"
           type: "ecological"
           priority: "high"  # Complete exclusion
           geometry: "circle"
@@ -91,7 +85,7 @@ design_variables:
           center: [59.32, -155.90]
           radius: 0.3
           cost_penalty: 1.3  # 30% cost increase
-      
+
       # NEW: Preferred zones (bonus areas)
       preferred_zones:
         - name: "Strong current areas"
@@ -104,7 +98,7 @@ design_variables:
           bonus_factor: 1.1  # 10% cost reduction
           geometry: "rectangle"
           bounds: [[59.30, -155.92], [59.34, -155.88]]
-          
+
   capacity:
     status: "unknown"  # Optimize for community needs
     constraints:
@@ -112,7 +106,7 @@ design_variables:
       individual_tech_limits:
         wind: [0.05, 1.0]      # Small wind turbines
         solar: [0.05, 1.5]     # Land or floating solar
-        hydro_tidal: [0.02, 0.5]  # River-based tidal systems
+        hydro_river_flow: [0.02, 0.5]  # River-based flow systems
       community_load: 0.5      # MW average community load
 
 # ENHANCED: Technology specifications with hydro category and solar deployment options
@@ -132,7 +126,7 @@ technologies:
       rotor_diameter: 25      # meters
       availability: 0.95
       cold_weather_package: true
-      
+
   solar:
     enabled: true
     environmental_impact: "low"
@@ -141,8 +135,9 @@ technologies:
       - "Ice conditions requiring robust mounting"
       - "Seasonal light variation (midnight sun/polar night)"
     cost_per_mw: 1800000      # USD, base cost (modified by deployment type)
-    capacity_factor: 0.15     # Low due to high latitude and seasonal variation
-    
+    capacity_factor: 0.15     # Low due to high latitude (base for land deployment)
+    floating_capacity_factor: 0.173  # 15% higher for floating (0.15 * 1.15)
+
     # NEW: Deployment options with automatic optimization
     deployment_options:
       land:
@@ -150,6 +145,7 @@ technologies:
         cost_multiplier: 0.8  # 20% cheaper than floating
         area_per_mw: 3000    # m² per MW (less than floating)
         maintenance_factor: 1.1  # 10% easier maintenance
+        capacity_factor_modifier: 1.0  # Base capacity factor
         constraints:
           max_distance_from_shore: 2.0  # km
           suitable_terrain: "flat_permafrost"
@@ -158,64 +154,62 @@ technologies:
         cost_multiplier: 1.0  # Base cost
         area_per_mw: 4000    # m² per MW (includes platform)
         maintenance_factor: 0.8  # 20% harder maintenance
+        capacity_factor_modifier: 1.15  # 15% higher efficiency due to cooling
+        additional_benefits:
+          water_cooling_effect: 0.10  # 10% efficiency boost from cooling
+          albedo_reflection: 0.05    # 5% boost from water reflection
+          reduced_soiling: 0.02      # 2% boost from natural cleaning
         constraints:
           min_water_depth: 3.0  # meters
           ice_resistant: true
+          seasonal_ice_impact: 0.95  # 5% reduction during ice season
       both:
         enabled: true
         optimization_strategy: "minimize_lcoe"  # Auto-choose based on economics
-    
+        performance_weighting: "capacity_factor"  # Consider performance in choice
+
     technical_params:
       panel_rating: 0.4       # kW per panel
       tilt_angle: 60          # degrees, optimized for latitude
       tracking: false         # Fixed mounting for durability
       ice_resistant: true
-      
-  # NEW: Hydro category with tidal current focus for rivers
-  hydro:
+
+  # Hydro category - river flow for Alaska
+  hydro_river_flow:
     enabled: true
     environmental_impact: "medium"
     ecosystem_concerns:
       - "Fish passage must be maintained"
       - "Minimal sediment disturbance"
       - "Seasonal flow variation impact"
-    
-    # Tidal range not applicable for rivers
-    tidal_range:
-      enabled: false
-      reason: "Minimal tidal range in riverine location"
-    
-    # PRIMARY: Tidal current using river flow
-    tidal_current:
-      enabled: true
-      cost_per_mw: 3500000  # USD, higher cost for specialized equipment
-      capacity_factor: 0.25  # Variable based on seasonal river flow
-      resource_type: "river_flow"  # vs "ocean_tidal"
-      seasonal_variation: true  # Account for spring melt, winter freeze
-      
-      technical_params:
-        turbine_rating: 0.05  # MW, smaller units appropriate for rivers
-        min_flow_velocity: 1.0  # m/s minimum for operation
-        max_flow_velocity: 4.0  # m/s maximum safe operation
-        deployment_depth_range: [3, 15]  # meters
-        fish_friendly_design: true
-        seasonal_deployment: true  # Can be removed during ice season
-        
-      environmental_constraints:
-        fish_passage: "required"  # Must not block fish migration
-        sediment_impact: "minimal"  # Low impact on river bed
-        ice_season_removal: "optional"  # Can remove during winter
-        
-      constraints:
-        river_locations_only: true
-        seasonal_flow_variation: true
-        requires_flow_measurement: true
-    
-    # Wave energy not applicable
-    wave:
-      enabled: false
-      reason: "Riverine location with minimal wave resource"
-      seasonal_access: "Bristol Bay (summer only)"
+    cost_per_mw: 3500000  # USD, higher cost for specialized equipment
+    capacity_factor: 0.25  # Variable based on seasonal river flow
+    resource_type: "river_flow"
+    seasonal_variation: true
+
+    technical_params:
+      turbine_rating: 0.05  # MW
+      min_flow_velocity: 1.0
+      max_flow_velocity: 4.0
+      deployment_depth_range: [3, 15]
+      fish_friendly_design: true
+      seasonal_deployment: true
+
+    environmental_constraints:
+      fish_passage: "required"
+      sediment_impact: "minimal"
+      ice_season_removal: "optional"
+
+    constraints:
+      river_locations_only: true
+      seasonal_flow_variation: true
+      requires_flow_measurement: true
+
+  # Wave energy not applicable for riverine location
+  wave:
+    enabled: false
+    reason: "Riverine location with minimal wave resource"
+    seasonal_access: "Bristol Bay (summer only)"
 
 # Adaptive optimization based on unknown variables
 optimization:
@@ -223,13 +217,13 @@ optimization:
     unknown_technology: "environmental_weighting"  # Prioritize low environmental impact
     unknown_location: "exclusion_filtering"        # Strict exclusion zone compliance
     unknown_capacity: "community_sizing"           # Size for community needs + growth
-    
+
   objective: "minimize_lcoe"  # Primary objective for remote community
   secondary_objectives:
     - "minimize_environmental_impact"
     - "maximize_community_benefits"
     - "maximize_energy_security"
-    
+
   constraints:
     max_investment: 5000000   # USD, community budget constraints
     min_capacity_factor: 0.20 # Overall system minimum
