@@ -30,23 +30,13 @@ data_sources:
     
   # ENHANCED: Hydro resource assessment for river-based systems
   hydro_resource:
-    river_flow:
-      source: "usgs_river_flow"  # US Geological Survey
-      backup_source: "model_based"  # Custom flow model
-      parameters:
-        flow_measurement_station: "15302000"  # Kvichak River station
-        historical_years: 10
-        seasonal_analysis: true
-      cache_duration: 720  # 30 days, river flow changes slower
-    
-    wave:
-      source: "copernicus"
-      applicable: false  # Riverine location, limited wave resource
-      seasonal_access: "Bristol Bay (summer only)"
-    
-    tidal_range:
-      applicable: false  # Minimal tidal range in riverine location
-      reason: "Riverine location with minimal tidal variation"
+    source: "usgs_river_flow"  # US Geological Survey
+    backup_source: "model_based"  # Custom flow model
+    parameters:
+      flow_measurement_station: "15302000"  # Kvichak River station
+      historical_years: 10
+      seasonal_analysis: true
+    cache_duration: 720  # 30 days, river flow changes slower
 
 # ENHANCED: User-configurable design variables with zones and tech mix selection
 design_variables:
@@ -184,51 +174,38 @@ technologies:
       tracking: false         # Fixed mounting for durability
       ice_resistant: true
       
-  # NEW: Hydro category with tidal current focus for rivers
-  hydro:
-    available: true
-    environmental_impact: "medium"
-    ecosystem_concerns:
-      - "Fish passage must be maintained"
-      - "Minimal sediment disturbance"
-      - "Seasonal flow variation impact"
-    
-    # Tidal range not applicable for rivers
-    tidal_range:
-      available: false
-      reason: "Minimal tidal range in riverine location"
-    
-    # PRIMARY: River flow using current velocity
-    river_flow:
+  # NEW: Hydro category for rivers
+    hydro_river_flow:
       available: true
+      environmental_impact: "medium"
+      ecosystem_concerns:
+        - "Fish passage must be maintained"
+        - "Minimal sediment disturbance"
+        - "Seasonal flow variation impact"
+
       cost_per_mw: 3500000  # USD, higher cost for specialized equipment
       capacity_factor: 0.25  # Variable based on seasonal river flow
-      resource_type: "river_flow"  # Direct river flow, not tidal
-      seasonal_variation: true  # Account for spring melt, winter freeze
-      
+      resource_type: "river_flow"
+      seasonal_variation: true
+
       technical_params:
-        turbine_rating: 0.05  # MW, smaller units appropriate for rivers
-        min_flow_velocity: 1.0  # m/s minimum for operation
-        max_flow_velocity: 4.0  # m/s maximum safe operation
-        deployment_depth_range: [3, 15]  # meters
+        turbine_rating: 0.05  # MW
+        min_flow_velocity: 1.0
+        max_flow_velocity: 4.0
+        deployment_depth_range: [3, 15]
         fish_friendly_design: true
-        seasonal_deployment: true  # Can be removed during ice season
-        
+        seasonal_deployment: true
+
       environmental_constraints:
-        fish_passage: "required"  # Must not block fish migration
-        sediment_impact: "minimal"  # Low impact on river bed
-        ice_season_removal: "optional"  # Can remove during winter
-        
+        fish_passage: "required"
+        sediment_impact: "minimal"
+        ice_season_removal: "optional"
+
       constraints:
         river_locations_only: true
         seasonal_flow_variation: true
         requires_flow_measurement: true
-    
-    # Wave energy not applicable
-    wave:
-      available: false
-      reason: "Riverine location with minimal wave resource"
-      seasonal_access: "Bristol Bay (summer only)"
+
 
 # Adaptive optimization based on unknown variables
 optimization:

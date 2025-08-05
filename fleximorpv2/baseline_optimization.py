@@ -261,6 +261,56 @@ class BaselineOptimization:
                                      target: OptimizationTarget) -> Dict[str, float]:
         """Evaluate platform performance for given design variables."""
         
+        # === Hard Constraints on Capacity and CapEx ===
+        max_total_capacity = self.config.optimization.get('constraints', {}).get('max_total_capacity', 2.0)  # MW
+        max_investment = self.config.optimization.get('constraints', {}).get('max_investment', 5_000_000)   # USD
+
+        # Extract capacities
+        technology_capacities = {
+            tech: design_vars.get(f"{tech}_capacity", 0.0)
+            for tech in ["wind", "solar", "hydro_river_flow"]
+        }
+        total_capacity = sum(technology_capacities.values())
+
+        # Calculate CapEx manually
+        capex_per_mw = {
+            "wind": self.config.technologies["wind"].cost_per_mw,
+            "solar": self.config.technologies["solar"].cost_per_mw,
+            "hydro_river_flow": self.config.technologies["hydro_river_flow"].cost_per_mw,
+        }
+        total_capex = sum(
+            technology_capacities[tech] * capex_per_mw[tech]
+            for tech in technology_capacities
+        )
+
+        # Enforce hard limits
+        if total_capacity > max_total_capacity:
+            print(f"❌ Rejecting: total capacity {total_capacity:.2f} MW exceeds {max_total_capacity} MW")
+            # Return penalty dictionary for expected keys
+            return {
+                'lcoe': 1e9,
+                'npv': -1e9,
+                'capex': 1e9,
+                'capacity_factor': 0.0,
+                'annual_energy': 0.0,
+                'irr': 0.0,
+                'opex': 1e9
+            }
+
+        if total_capex > max_investment:
+            print(f"❌ Rejecting: total CapEx ${total_capex:,.0f} exceeds budget ${max_investment:,.0f}")
+            return {
+                'lcoe': 1e9,
+                'npv': -1e9,
+                'capex': 1e9,
+                'capacity_factor': 0.0,
+                'annual_energy': 0.0,
+                'irr': 0.0,
+                'opex': 1e9
+            }
+
+
+        
         # Calculate technical performance
         tech_performance = self.tech_model.calculate_performance(
             design_vars, self.resource_data

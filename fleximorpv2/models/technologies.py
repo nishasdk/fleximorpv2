@@ -160,7 +160,7 @@ class TechnologyModel:
             return self._calculate_solar_performance(capacity, resource_data, design_vars)
         elif tech_name == 'wave':
             return self._calculate_wave_performance(capacity, resource_data)
-        elif tech_name.startswith('hydro'):
+        elif tech_name.startswith('hydro_river_flow'):
             return self._calculate_hydro_performance(tech_name, capacity, resource_data)
         else:
             raise ValueError(f"Unknown technology: {tech_name}")
@@ -176,7 +176,8 @@ class TechnologyModel:
         wind_speeds = resource_data.wind_speed
         
         # Apply height correction if needed
-        hub_height = tech_config.technical_params.get('hub_height', params['hub_height_default'])
+        technical_params = tech_config.technical_params if tech_config.technical_params is not None else {}
+        hub_height = technical_params.get('hub_height', params['hub_height_default'])
         if hub_height != 10:  # Assuming data is at 10m
             wind_speeds = wind_speeds * (hub_height / 10) ** 0.143  # Wind shear law
         
@@ -197,7 +198,8 @@ class TechnologyModel:
         annual_energy = capacity_factor * capacity * 8760  # MWh/year
         
         # Apply availability factor
-        availability = tech_config.technical_params.get('availability', 0.95)
+        technical_params = tech_config.technical_params if tech_config.technical_params is not None else {}
+        availability = technical_params.get('availability', 0.95)
         annual_energy *= availability
         
         return TechnologyPerformance(
@@ -491,7 +493,7 @@ class TechnologyModel:
                                    resource_data: ResourceData) -> TechnologyPerformance:
         """Calculate hydro technology performance (river flow, wave, tidal)."""
         # Get hydro configuration
-        hydro_config = self.config.technologies.get('hydro', {})
+        hydro_config = self.config.technologies.get('hydro_river_flow', {})
         
         # Determine hydro subtype
         if 'river_flow' in tech_name:
@@ -517,7 +519,7 @@ class TechnologyModel:
                                         resource_data: ResourceData,
                                         hydro_config: Dict[str, Any]) -> TechnologyPerformance:
         """Calculate river flow turbine performance."""
-        river_flow_config = hydro_config.get('river_flow', {})
+        river_flow_config = hydro_config.get('hydro_river_flow', {})
         
         # Base capacity factor from config
         base_cf = river_flow_config.get('capacity_factor', 0.25)

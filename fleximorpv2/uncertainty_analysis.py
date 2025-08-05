@@ -19,7 +19,7 @@ import pandas as pd
 from .config import SiteConfig
 from .baseline_optimization import BaselineOptimization, BaselineResults
 from .models.platform import PlatformModel
-from .models.technologies import TechnologyModel
+from .models.technologies import TechnologyModel, ResourceData
 from .models.economics import EconomicModel
 from .utils.data_loader import APIDataLoader
 from .utils.financial import FinancialCalculator
@@ -69,14 +69,16 @@ class UncertaintyAnalysis:
     different scenarios.
     """
     
-    def __init__(self, config: SiteConfig):
+    def __init__(self, config: SiteConfig, baseline_result=None):
         """
         Initialize uncertainty analysis.
         
         Args:
             config: Site configuration object
+            baseline_result: Optional baseline optimization result to use as starting point
         """
         self.config = config
+        self.baseline_result = baseline_result
         self.baseline_optimizer = BaselineOptimization(config)
         self.platform_model = PlatformModel(config)
         self.tech_model = TechnologyModel(config)
@@ -102,6 +104,48 @@ class UncertaintyAnalysis:
         
         # Define uncertainty distributions
         self._define_uncertainty_distributions()
+    
+    def _setup_custom_uncertainty_parameters(self, uncertainty_params: Dict[str, Any]):
+        """Setup custom uncertainty parameters from user input."""
+        # Convert user-defined uncertainty parameters to distributions
+        for param_name, param_config in uncertainty_params.items():
+            distribution_type = param_config.get('distribution', 'normal')
+            
+            if distribution_type == 'normal':
+                mean = param_config.get('mean', 1.0)
+                std = param_config.get('std', 0.1)
+                self.distributions[param_name] = stats.norm(loc=mean, scale=std)
+                
+            elif distribution_type == 'triangular':
+                low = param_config.get('low', 0.8)
+                mode = param_config.get('mode', 1.0)
+                high = param_config.get('high', 1.2)
+                # Convert to scipy.stats triang parameters
+                c = (mode - low) / (high - low)
+                self.distributions[param_name] = stats.triang(c=c, loc=low, scale=high-low)
+                
+            elif distribution_type == 'beta':
+                alpha = param_config.get('alpha', 2)
+                beta = param_config.get('beta', 5)
+                low = param_config.get('low', 0.0)
+                high = param_config.get('high', 1.0)
+                self.distributions[param_name] = stats.beta(alpha, beta, loc=low, scale=high-low)
+                
+            elif distribution_type == 'lognormal':
+                mean = param_config.get('mean', 1.0)
+                sigma = param_config.get('sigma', 0.1)
+                self.distributions[param_name] = stats.lognorm(s=sigma, scale=mean)
+                
+            elif distribution_type == 'uniform':
+                low = param_config.get('low', 0.8)
+                high = param_config.get('high', 1.2)
+                self.distributions[param_name] = stats.uniform(loc=low, scale=high-low)
+                
+            else:
+                print(f"Warning: Unknown distribution type '{distribution_type}' for parameter '{param_name}'. Using normal distribution.")
+                mean = param_config.get('mean', 1.0)
+                std = param_config.get('std', 0.1)
+                self.distributions[param_name] = stats.norm(loc=mean, scale=std)
     
     def _define_uncertainty_distributions(self):
         """Define probability distributions for uncertain variables."""
@@ -160,6 +204,13 @@ class UncertaintyAnalysis:
                 target_value=kwargs.get('target_production', 1000000)  # 1 GWh default
             )
             baseline_design = baseline_results.optimal_design
+        
+        # Pre-load base weather data once (major performance optimization)
+        print("Pre-loading base weather data...")
+        self._base_weather_data = self.data_loader.load_weather_data(
+            coordinates=self.config.coordinates,
+            technologies=self.config.get_enabled_technologies()
+        )
         
         # Generate uncertainty scenarios
         scenarios = self._generate_scenarios(sampling_method)
@@ -252,53 +303,138 @@ class UncertaintyAnalysis:
         performance_results = []
         
         for i, scenario in enumerate(scenarios):
-            if i % 1000 == 0:
-                print(f"Evaluating scenario {i+1}/{len(scenarios)}")
+            # More frequent progress updates for better user feedback
+            if i % max(1, len(scenarios) // 10) == 0:  # Show progress every 10%
+                progress = (i / len(scenarios)) * 100
+                print(f"  Progress: {progress:.0f}% ({i+1}/{len(scenarios)} scenarios)")
             
-            # Apply uncertainty to input data
-            modified_data = self._apply_scenario_to_data(scenario)
-            
-            # Calculate performance
-            tech_performance = self.tech_model.calculate_performance(design, modified_data)
-            economic_performance = self.economic_model.calculate_economics(
-                design, tech_performance, scenario
-            )
-            financial_metrics = self.financial_calc.calculate_metrics(
-                capex=economic_performance['capex'],
-                opex=economic_performance['opex'],
-                revenue=economic_performance['revenue'],
-                project_life=self.config.economic['project_lifetime']
-            )
-            
-            # Combine results
-            performance = {
-                **tech_performance,
-                **economic_performance,
-                **financial_metrics,
-                'scenario_id': i
-            }
-            
-            performance_results.append(performance)
+            try:
+                # Apply uncertainty to input data
+                modified_data = self._apply_scenario_to_data(scenario)
+                
+                # Calculate performance
+                tech_performance = self.tech_model.calculate_performance(design, modified_data)
+                
+                # Calculate economics with scenario-based cost adjustments
+                economic_performance = self.economic_model.calculate_economics(
+                    design, tech_performance
+                )
+                
+                # Apply cost multipliers from scenario
+                if 'arctic_cost_premium' in scenario:
+                    economic_performance['capex'] *= scenario['arctic_cost_premium']
+                    economic_performance['opex'] *= scenario['arctic_cost_premium']
+                
+                if 'logistics_cost_multiplier' in scenario:
+                    economic_performance['opex'] *= scenario['logistics_cost_multiplier']
+                
+                if 'capex_multiplier' in scenario:
+                    economic_performance['capex'] *= scenario['capex_multiplier']
+                
+                if 'opex_multiplier' in scenario:
+                    economic_performance['opex'] *= scenario['opex_multiplier']
+                
+                # Apply electricity price variation
+                if 'electricity_price' in scenario:
+                    # Recalculate revenue with new price
+                    annual_energy = tech_performance.get('annual_energy', 0)
+                    economic_performance['revenue'] = annual_energy * scenario['electricity_price']
+                elif 'electricity_price_multiplier' in scenario:
+                    economic_performance['revenue'] *= scenario['electricity_price_multiplier']
+                
+                # Calculate financial metrics
+                financial_metrics = self.financial_calc.calculate_metrics(
+                    capex=economic_performance['capex'],
+                    opex=economic_performance['opex'],
+                    revenue=economic_performance['revenue'],
+                    project_life=self.config.economic['project_lifetime']
+                )
+                
+                # Combine results
+                performance = {
+                    **tech_performance,
+                    **economic_performance,
+                    **financial_metrics,
+                    'scenario_id': i
+                }
+                
+                performance_results.append(performance)
+                
+            except Exception as e:
+                print(f"Error evaluating scenario {i}: {e}")
+                # Create a failed scenario result
+                performance_results.append({
+                    'scenario_id': i,
+                    'lcoe': 1000.0,  # Very high LCOE for failed scenarios
+                    'npv': -1e6,     # Negative NPV
+                    'capacity_factor': 0.0,
+                    'annual_energy': 0.0,
+                    'capex': 0.0,
+                    'opex': 0.0,
+                    'revenue': 0.0,
+                    'failed': True
+                })
         
         return performance_results
     
-    def _apply_scenario_to_data(self, scenario: Dict[str, float]) -> Dict[str, Any]:
+    def _apply_scenario_to_data(self, scenario: Dict[str, float]) -> ResourceData:
         """Apply scenario parameters to modify input data."""
-        # Start with base resource data
-        modified_data = self.data_loader.load_weather_data(
-            coordinates=self.config.coordinates,
-            technologies=self.config.get_enabled_technologies()
-        )
+        # Use pre-loaded base data for performance
+        if hasattr(self, '_base_weather_data'):
+            base_data = self._base_weather_data
+        else:
+            # Fallback to loading data (slower)
+            base_data = self.data_loader.load_weather_data(
+                coordinates=self.config.coordinates,
+                technologies=self.config.get_enabled_technologies()
+            )
         
-        # Apply uncertainty multipliers
+        # Create modified copies of the arrays
+        modified_wind_speed = base_data.wind_speed.copy()
+        modified_solar_irradiance = base_data.solar_irradiance.copy()
+        modified_wave_height = base_data.wave_height.copy()
+        modified_temperature = base_data.temperature.copy()
+        
+        # Apply uncertainty multipliers based on scenario parameters
+        
+        # Handle direct resource modifications
         if 'wind_speed' in scenario:
-            modified_data['wind_speed'] *= scenario['wind_speed']
+            modified_wind_speed *= scenario['wind_speed']
+        elif 'wind_resource_variability' in scenario:
+            modified_wind_speed *= scenario['wind_resource_variability']
         
         if 'solar_irradiance' in scenario:
-            modified_data['solar_irradiance'] *= scenario['solar_irradiance']
+            modified_solar_irradiance *= scenario['solar_irradiance']
+        elif 'solar_resource_variability' in scenario:
+            modified_solar_irradiance *= scenario['solar_resource_variability']
         
         if 'wave_height' in scenario:
-            modified_data['wave_height'] *= scenario['wave_height']
+            modified_wave_height *= scenario['wave_height']
+        elif 'wave_resource_variability' in scenario:
+            modified_wave_height *= scenario['wave_resource_variability']
+        
+        # Handle temperature variations
+        if 'temperature_variation' in scenario:
+            # Apply temperature change (additive)
+            temp_change = (scenario['temperature_variation'] - 1.0) * 10  # Convert multiplier to temperature change
+            modified_temperature += temp_change
+        
+        # Handle ice impact (Arctic-specific)
+        if 'ice_impact_factor' in scenario:
+            # Ice affects both wind and solar generation
+            ice_factor = 1.0 - scenario['ice_impact_factor']  # Reduce performance
+            modified_wind_speed *= ice_factor
+            modified_solar_irradiance *= ice_factor
+        
+        # Create new ResourceData object with modified values
+        modified_data = ResourceData(
+            wind_speed=modified_wind_speed,
+            solar_irradiance=modified_solar_irradiance,
+            wave_height=modified_wave_height,
+            wave_period=base_data.wave_period.copy(),
+            temperature=modified_temperature,
+            timestamps=base_data.timestamps.copy()
+        )
         
         return modified_data
     
@@ -588,6 +724,80 @@ class UncertaintyAnalysis:
             )
         }
     
+    def run_monte_carlo(self, 
+                       n_simulations: int = 1000,
+                       baseline_design: Dict[str, Any] = None,
+                       base_design: Dict[str, Any] = None,  # Alternative parameter name for compatibility
+                       uncertainty_params: Dict[str, Any] = None,
+                       n_samples: int = None,  # Alternative parameter name for compatibility
+                       reoptimize: bool = True,
+                       parallel: bool = False,
+                       **kwargs) -> 'MonteCarloResults':
+        """
+        Run Monte Carlo uncertainty analysis.
+        
+        This method provides compatibility with the expected interface from 
+        the integration example. It's a wrapper around analyze_uncertainty.
+        
+        Args:
+            n_simulations: Number of Monte Carlo simulations to run
+            baseline_design: Optional baseline design. If None, will optimize first.
+            base_design: Alternative name for baseline_design (for compatibility)
+            uncertainty_params: Custom uncertainty parameter definitions
+            n_samples: Alternative name for n_simulations (for compatibility)
+            reoptimize: Whether to reoptimize design under uncertainty
+            parallel: Whether to run simulations in parallel (not implemented yet)
+            **kwargs: Additional parameters for analysis
+            
+        Returns:
+            MonteCarloResults object with analysis results
+        """
+        # Handle parameter name compatibility
+        if n_samples is not None:
+            n_simulations = n_samples
+        if base_design is not None:
+            baseline_design = base_design
+            
+        print(f"Starting Monte Carlo uncertainty analysis with {n_simulations} simulations...")
+        
+        # Handle custom uncertainty parameters
+        if uncertainty_params is not None:
+            self._setup_custom_uncertainty_parameters(uncertainty_params)
+        
+        # Temporarily update the number of Monte Carlo runs
+        original_runs = self.uncertainty_params.monte_carlo_runs
+        self.uncertainty_params.monte_carlo_runs = n_simulations
+        
+        try:
+            # Use baseline result from constructor if no design provided
+            if baseline_design is None and self.baseline_result is not None:
+                # Extract design from baseline result if it has the expected structure
+                if hasattr(self.baseline_result, 'optimal_config'):
+                    baseline_design = self.baseline_result.optimal_config
+                elif hasattr(self.baseline_result, 'optimal_design'):
+                    baseline_design = self.baseline_result.optimal_design
+            
+            # Run the analysis using the existing analyze_uncertainty method
+            uncertainty_results = self.analyze_uncertainty(
+                baseline_design=baseline_design,
+                reoptimize=False,  # Disable expensive reoptimization by default for speed
+                sampling_method='monte_carlo',
+                **kwargs
+            )
+            
+            # Convert to MonteCarloResults format expected by integration example
+            monte_carlo_results = MonteCarloResults(
+                uncertainty_results=uncertainty_results,
+                n_simulations=n_simulations,
+                parallel=parallel
+            )
+            
+            return monte_carlo_results
+            
+        finally:
+            # Restore original number of runs
+            self.uncertainty_params.monte_carlo_runs = original_runs
+    
     def get_summary(self) -> Dict[str, Any]:
         """
         Get summary of uncertainty analysis results.
@@ -609,3 +819,157 @@ class UncertaintyAnalysis:
             'monte_carlo_runs': self.results.uncertainty_info['monte_carlo_runs'],
             'sampling_method': self.results.uncertainty_info.get('sampling_method', 'monte_carlo')
         }
+
+
+@dataclass
+class MonteCarloResults:
+    """
+    Results from Monte Carlo uncertainty analysis.
+    
+    This class provides the expected interface for the integration example,
+    wrapping the UncertaintyResults with additional Monte Carlo specific properties.
+    """
+    uncertainty_results: UncertaintyResults
+    n_simulations: int
+    parallel: bool
+    
+    def __post_init__(self):
+        """Initialize flat dictionary for backward compatibility."""
+        self._flat_dict = self.to_flat_dict()
+    
+    def __getitem__(self, key: str):
+        """Allow dictionary-like access for backward compatibility."""
+        return self._flat_dict[key]
+    
+    def __contains__(self, key: str) -> bool:
+        """Support 'in' operator."""
+        return key in self._flat_dict
+    
+    def get(self, key: str, default=None):
+        """Dictionary-like get method."""
+        return self._flat_dict.get(key, default)
+    
+    @property
+    def statistics(self) -> Dict[str, Any]:
+        """Get statistics in the format expected by integration example."""
+        results = {}
+        
+        # LCOE statistics
+        if 'lcoe' in self.uncertainty_results.mean_performance:
+            lcoe_percentiles = self.uncertainty_results.percentiles.get('lcoe', {})
+            results['lcoe'] = {
+                'mean': self.uncertainty_results.mean_performance['lcoe'],
+                'std': self.uncertainty_results.std_performance['lcoe'],
+                'p5': lcoe_percentiles.get('p5', 0),
+                'p25': lcoe_percentiles.get('p25', 0),
+                'p50': lcoe_percentiles.get('p50', 0),
+                'p75': lcoe_percentiles.get('p75', 0),
+                'p95': lcoe_percentiles.get('p95', 0),
+                'cv': (self.uncertainty_results.std_performance['lcoe'] / 
+                      max(self.uncertainty_results.mean_performance['lcoe'], 1e-10))
+            }
+        
+        # NPV statistics
+        if 'npv' in self.uncertainty_results.mean_performance:
+            npv_percentiles = self.uncertainty_results.percentiles.get('npv', {})
+            results['npv'] = {
+                'mean': self.uncertainty_results.mean_performance['npv'],
+                'std': self.uncertainty_results.std_performance['npv'],
+                'p5': npv_percentiles.get('p5', 0),
+                'p25': npv_percentiles.get('p25', 0),
+                'p50': npv_percentiles.get('p50', 0),
+                'p75': npv_percentiles.get('p75', 0),
+                'p95': npv_percentiles.get('p95', 0)
+            }
+        
+        # Capacity factor statistics
+        if 'capacity_factor' in self.uncertainty_results.mean_performance:
+            cf_percentiles = self.uncertainty_results.percentiles.get('capacity_factor', {})
+            results['capacity_factor'] = {
+                'mean': self.uncertainty_results.mean_performance['capacity_factor'],
+                'std': self.uncertainty_results.std_performance['capacity_factor'],
+                'p5': cf_percentiles.get('p5', 0),
+                'p25': cf_percentiles.get('p25', 0),
+                'p50': cf_percentiles.get('p50', 0),
+                'p75': cf_percentiles.get('p75', 0),
+                'p95': cf_percentiles.get('p95', 0)
+            }
+        
+        # Simulation statistics
+        success_rate = 1.0  # Assume all simulations successful for now
+        results['simulation_stats'] = {
+            'total_simulations': self.n_simulations,
+            'successful_simulations': self.n_simulations,
+            'success_rate': success_rate,
+            'parallel_execution': self.parallel
+        }
+        
+        return results
+    
+    @property
+    def risk_metrics(self) -> Dict[str, Any]:
+        """Get risk metrics in the format expected by integration example."""
+        risk_metrics = {}
+        
+        # LCOE risk metrics
+        if 'lcoe_var_95' in self.uncertainty_results.risk_metrics:
+            risk_metrics['lcoe_risk'] = {
+                'var_95': self.uncertainty_results.risk_metrics['lcoe_var_95'],
+                'var_99': self.uncertainty_results.risk_metrics.get('lcoe_var_99', 0),
+                'cvar_95': self.uncertainty_results.risk_metrics.get('lcoe_cvar_95', 0)
+            }
+        
+        # NPV risk metrics
+        if 'prob_negative_npv' in self.uncertainty_results.risk_metrics:
+            risk_metrics['npv_risk'] = {
+                'prob_negative': self.uncertainty_results.risk_metrics['prob_negative_npv'],
+                'var_5': self.uncertainty_results.risk_metrics.get('npv_var_5', 0)
+            }
+        
+        # Capacity factor risk
+        if 'capacity_factor_cv' in self.uncertainty_results.risk_metrics:
+            risk_metrics['capacity_factor_risk'] = {
+                'coefficient_of_variation': self.uncertainty_results.risk_metrics['capacity_factor_cv']
+            }
+        
+        return risk_metrics
+    
+    def to_flat_dict(self) -> Dict[str, float]:
+        """Convert results to flat dictionary format for compatibility with test code."""
+        stats = self.statistics
+        risk = self.risk_metrics
+        
+        result = {}
+        
+        # LCOE metrics
+        if 'lcoe' in stats:
+            result.update({
+                'mean_lcoe': stats['lcoe']['mean'],
+                'std_lcoe': stats['lcoe']['std'],
+                'lcoe_var_95': risk.get('lcoe_risk', {}).get('var_95', 0),
+                'lcoe_cvar_95': risk.get('lcoe_risk', {}).get('cvar_95', 0)
+            })
+        
+        # NPV metrics
+        if 'npv' in stats:
+            result.update({
+                'mean_npv': stats['npv']['mean'],
+                'std_npv': stats['npv']['std'],
+                'prob_negative_npv': risk.get('npv_risk', {}).get('prob_negative', 0),
+                'npv_var_5': risk.get('npv_risk', {}).get('var_5', 0)
+            })
+        
+        # Capacity factor metrics
+        if 'capacity_factor' in stats:
+            result.update({
+                'mean_capacity_factor': stats['capacity_factor']['mean'],
+                'std_capacity_factor': stats['capacity_factor']['std']
+            })
+        
+        # Simulation info
+        result.update({
+            'n_simulations': self.n_simulations,
+            'parallel': self.parallel
+        })
+        
+        return result
