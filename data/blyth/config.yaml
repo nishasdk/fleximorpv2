@@ -80,7 +80,7 @@ design_variables:
 # Technology specifications - mature offshore market
 technologies:
   wind:
-    available: true
+    enabled: true
     environmental_impact: "medium"
     ecosystem_concerns:
       - "Seabird collision and displacement"
@@ -97,7 +97,7 @@ technologies:
       foundation_type: "monopile"
       
   solar:
-    available: true
+    enabled: true
     environmental_impact: "low"
     ecosystem_concerns:
       - "Minimal marine ecosystem impact"
@@ -113,7 +113,7 @@ technologies:
       marine_grade: true
       
   wave:
-    available: true
+    enabled: true
     environmental_impact: "medium"
     ecosystem_concerns:
       - "Underwater noise"
