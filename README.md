@@ -69,12 +69,14 @@ The system includes synthetic demo data. For live resource assessment, obtain fr
 - **Technologies**: Wind + Solar + Tidal/Hydro (river flow turbines)
 - **Key Constraints**: Salmon spawning grounds, traditional fishing areas, community ownership
 - **Analysis**: TRIO optimization with MCDA (LCOE, emissions, social acceptance, aquaculture synergy)
+- **References**: [Igiugig Village Council](https://www.igiugig.com); [Alaska Energy Authority - Renewable Energy Fund](https://www.akenergyauthority.org/Programs/RenewableEnergyFund); [ORPC RivGen deployment at Igiugig](https://orpc.co)
 
 ### Blyth - Offshore Wind Farm
 - **Focus**: Large-scale commercial offshore development in the North Sea
 - **Challenges**: Grid integration, marine ecology, fishing conflicts
 - **Technologies**: Wind + Solar + Wave hybrid system
 - **Key Constraints**: Commercial fishing areas, shipping lanes
+- **References**: [Blyth Offshore Demonstrator, EDF Renewables](https://www.edfenergy.com/energy/wind-onshore-offshore/blyth-offshore-wind-farm) (41.5 MW, 13 turbines, commissioned 2019); Blyth was also home to the world's first commercial offshore wind farm in 2000
 
 ### Eastport, Maine - Tidal-Constrained Site
 - **Focus**: Development alongside active lobster fishing industry
@@ -237,6 +239,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
+- **Strategic Engineering** - [strategic-engineering.co](https://strategic-engineering.co)
 - **NREL** - Renewable resource data and technology databases
 - **NASA** - Climate and weather data services
 - **Copernicus** - European environmental monitoring program
