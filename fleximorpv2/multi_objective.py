@@ -7,7 +7,7 @@ and risk metrics. Uses NSGA-II and other evolutionary algorithms.
 """
 
 import numpy as np
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional  # noqa: F401 — Tuple used in _eval_economics signature
 from dataclasses import dataclass
 import json
 from datetime import datetime
@@ -90,13 +90,15 @@ class MultiObjectiveAnalysis:
             if obj not in self.available_objectives:
                 raise ValueError(f"Unknown objective: {obj}")
         
-        # Mock implementation - in real version would use NSGA-II
-        pareto_solutions = self._generate_mock_pareto_frontier(objectives, population_size)
-        
-        # Extract objective values and design variables
+        # Generate candidate solutions by sampling the design space
+        candidates = self._generate_candidate_solutions(objectives, population_size)
+
+        # Filter to Pareto-optimal front
+        pareto_solutions = self._pareto_filter(candidates, objectives)
+
         objective_values = np.array([sol['objectives'] for sol in pareto_solutions])
-        design_variables = np.array([sol['design'] for sol in pareto_solutions])
-        
+        design_variables = np.array([[v for v in sol['design'].values()] for sol in pareto_solutions])
+
         self.results = MultiObjectiveResults(
             pareto_frontier=pareto_solutions,
             objective_values=objective_values,
@@ -104,115 +106,158 @@ class MultiObjectiveAnalysis:
             objective_names=objectives,
             optimization_info={
                 'population_size': population_size,
-                'generations': generations,
-                'algorithm': 'NSGA-II',
-                'convergence': True
+                'n_candidates_evaluated': len(candidates),
+                'n_pareto_solutions': len(pareto_solutions),
+                'algorithm': 'random_search_pareto_filter',
+                'convergence': True,
             },
             timestamp=datetime.now().isoformat()
         )
-        
-        print(f"Multi-objective optimization completed. Found {len(pareto_solutions)} Pareto-optimal solutions")
+
+        print(f"Multi-objective analysis completed. Found {len(pareto_solutions)} Pareto-optimal solutions from {len(candidates)} candidates.")
         return self.results
     
-    def _generate_mock_pareto_frontier(self, objectives: List[str], n_solutions: int) -> List[Dict[str, Any]]:
-        """Generate mock Pareto frontier for demonstration."""
+    # ------------------------------------------------------------------
+    # Design space sampling and Pareto filtering
+    # ------------------------------------------------------------------
+
+    def _generate_candidate_solutions(self, objectives: List[str], n_candidates: int) -> List[Dict[str, Any]]:
+        """Sample the design space and evaluate each candidate against all objectives."""
+        np.random.seed(42)
         solutions = []
-        
-        for i in range(min(n_solutions, 50)):  # Limit for demo
-            # Generate random but reasonable design
-            design = self._generate_random_design()
-            
-            # Calculate objective values
-            obj_values = []
-            for obj_name in objectives:
-                obj_func = self.available_objectives[obj_name]
-                value = obj_func(design)
-                obj_values.append(value)
-            
+        enabled = self.config.get_enabled_technologies()
+        max_cap = self.config.optimization.get('constraints', {}).get('max_total_capacity', 200)
+
+        for _ in range(n_candidates):
+            design = {}
+            remaining = max_cap
+            for i, tech in enumerate(enabled):
+                if i == len(enabled) - 1:
+                    cap = np.random.uniform(0, remaining)
+                else:
+                    cap = np.random.uniform(0, remaining * 0.7)
+                    remaining -= cap
+                design[f'{tech}_capacity'] = max(0.0, cap)
+
+            design.update({
+                'platform_area': np.random.uniform(5000, 20000),
+                'water_depth': np.random.uniform(20, 100),
+                'distance_to_shore': np.random.uniform(5, 50),
+            })
+
+            obj_values = [self.available_objectives[obj](design) for obj in objectives]
             solutions.append({
                 'design': design,
                 'objectives': obj_values,
-                'objective_names': objectives
+                'objective_names': objectives,
             })
-        
+
         return solutions
-    
-    def _generate_random_design(self) -> Dict[str, float]:
-        """Generate random design variables."""
-        design = {}
-        
-        # Technology capacities
-        for tech in self.config.get_enabled_technologies():
-            design[f'{tech}_capacity'] = np.random.uniform(10, 100)
-        
-        # Platform parameters
-        design.update({
-            'platform_area': np.random.uniform(5000, 20000),
-            'water_depth': np.random.uniform(30, 100),
-            'distance_to_shore': np.random.uniform(10, 50)
-        })
-        
-        return design
-    
+
+    def _pareto_filter(self, candidates: List[Dict[str, Any]], objectives: List[str]) -> List[Dict[str, Any]]:
+        """Return non-dominated solutions (all objectives treated as minimise)."""
+        # maximize_* objectives are stored as negatives so lower is still better
+        pareto = []
+        for i, sol_i in enumerate(candidates):
+            dominated = False
+            for j, sol_j in enumerate(candidates):
+                if i == j:
+                    continue
+                # sol_j weakly dominates sol_i in every objective and strictly in at least one
+                objs_i = sol_i['objectives']
+                objs_j = sol_j['objectives']
+                if all(vj <= vi for vj, vi in zip(objs_j, objs_i)) and any(vj < vi for vj, vi in zip(objs_j, objs_i)):
+                    dominated = True
+                    break
+            if not dominated:
+                pareto.append(sol_i)
+        return pareto if pareto else candidates[:10]  # fallback: return first 10 if all dominated
+
+    # ------------------------------------------------------------------
+    # Objective functions — deterministic, using config parameters
+    # ------------------------------------------------------------------
+
+    def _eval_economics(self, design: Dict[str, float]) -> Tuple[float, float, float]:
+        """Return (lcoe, npv, total_capex) using analytical model."""
+        enabled = self.config.get_enabled_technologies()
+        discount_rate = self.config.economic.get('discount_rate', 0.08)
+        project_life = int(self.config.economic.get('project_lifetime', 25))
+
+        elec_price = self.config.economic.get('electricity_price', 0.085)
+        if elec_price < 5:
+            elec_price = elec_price * 1000  # $/kWh → $/MWh
+
+        crf = (discount_rate * (1 + discount_rate) ** project_life) / ((1 + discount_rate) ** project_life - 1)
+        annuity = (1 - (1 + discount_rate) ** (-project_life)) / discount_rate
+
+        total_capex = 0.0
+        total_annual_energy = 0.0
+        total_capacity = 0.0
+        for tech in enabled:
+            cap = design.get(f'{tech}_capacity', 0.0)
+            if cap <= 0:
+                continue
+            cf = self.config.technologies[tech].capacity_factor
+            total_capex += cap * self.config.technologies[tech].cost_per_mw
+            total_annual_energy += cf * cap * 8760
+            total_capacity += cap
+
+        if total_capacity <= 0 or total_annual_energy <= 0:
+            return float('inf'), 0.0, total_capex
+
+        annual_opex = total_capex * 0.02
+        lcoe = (total_capex * crf + annual_opex) / total_annual_energy
+        npv = -total_capex + (total_annual_energy * elec_price - annual_opex) * annuity
+        return lcoe, npv, total_capex
+
     def _calc_lcoe(self, design: Dict[str, float]) -> float:
-        """Calculate LCOE objective."""
-        # Mock calculation
-        total_capacity = sum(design[f'{tech}_capacity'] for tech in self.config.get_enabled_technologies())
-        base_lcoe = 85 + np.random.normal(0, 10)
-        return max(50, base_lcoe * (100 / max(total_capacity, 1)))
-    
+        """LCOE [$/MWh] — minimise."""
+        lcoe, _, _ = self._eval_economics(design)
+        return lcoe
+
     def _calc_npv(self, design: Dict[str, float]) -> float:
-        """Calculate NPV objective (negative for minimization problems)."""
-        total_capacity = sum(design[f'{tech}_capacity'] for tech in self.config.get_enabled_technologies())
-        base_npv = total_capacity * 1.5e6 + np.random.normal(0, 0.5e6)
-        return max(0, base_npv)
-    
+        """Negative NPV [$] — stored negative so Pareto filter can minimise."""
+        _, npv, _ = self._eval_economics(design)
+        return -npv
+
     def _calc_env_impact(self, design: Dict[str, float]) -> float:
-        """Calculate environmental impact score."""
-        total_capacity = sum(design[f'{tech}_capacity'] for tech in self.config.get_enabled_technologies())
+        """Environmental impact score — deterministic proxy (lower is better)."""
+        enabled = self.config.get_enabled_technologies()
+        total_capacity = sum(design.get(f'{tech}_capacity', 0.0) for tech in enabled)
         platform_area = design.get('platform_area', 10000)
-        
-        # Higher capacity and area = higher impact
-        impact = (total_capacity * 0.1 + platform_area * 0.0001) * np.random.uniform(0.8, 1.2)
-        return max(0, impact)
-    
-    def _calc_capacity_factor(self, design: Dict[str, float]) -> float:
-        """Calculate capacity factor objective."""
-        # Mock calculation based on technology mix
-        cf = 0
-        total_cap = 0
-        
-        for tech in self.config.get_enabled_technologies():
-            cap = design[f'{tech}_capacity']
-            tech_cf = 0.4 if tech == 'wind' else 0.2 if tech == 'solar' else 0.3
-            cf += cap * tech_cf
-            total_cap += cap
-        
-        return cf / max(total_cap, 1) if total_cap > 0 else 0
-    
-    def _calc_risk_metric(self, design: Dict[str, float]) -> float:
-        """Calculate risk metric."""
-        # Mock risk calculation
-        total_capacity = sum(design[f'{tech}_capacity'] for tech in self.config.get_enabled_technologies())
         distance = design.get('distance_to_shore', 20)
-        
-        # Further offshore = higher risk
-        risk = (distance * 0.01 + total_capacity * 0.001) * np.random.uniform(0.5, 1.5)
-        return max(0, risk)
-    
+        # Larger platform and shallower water = more impact; greater distance = more impact
+        water_depth = design.get('water_depth', 50)
+        depth_factor = max(0.5, 1.0 - water_depth / 200)
+        return total_capacity * 0.1 + platform_area * 0.0001 + distance * 0.05 * depth_factor
+
+    def _calc_capacity_factor(self, design: Dict[str, float]) -> float:
+        """Negative weighted capacity factor — stored negative for minimisation."""
+        enabled = self.config.get_enabled_technologies()
+        weighted_cf = 0.0
+        total_cap = 0.0
+        for tech in enabled:
+            cap = design.get(f'{tech}_capacity', 0.0)
+            cf = self.config.technologies[tech].capacity_factor
+            weighted_cf += cap * cf
+            total_cap += cap
+        cf_value = weighted_cf / total_cap if total_cap > 0 else 0.0
+        return -cf_value  # negative so Pareto filter minimises
+
+    def _calc_risk_metric(self, design: Dict[str, float]) -> float:
+        """Risk score — deterministic proxy (lower is better)."""
+        enabled = self.config.get_enabled_technologies()
+        total_capacity = sum(design.get(f'{tech}_capacity', 0.0) for tech in enabled)
+        distance = design.get('distance_to_shore', 20)
+        water_depth = design.get('water_depth', 50)
+        # Risk increases with distance and depth; decreases with diversification
+        n_techs = sum(1 for t in enabled if design.get(f'{t}_capacity', 0) > 1)
+        diversification_bonus = max(0, (n_techs - 1) * 0.05)
+        return (distance * 0.02 + water_depth * 0.005 + total_capacity * 0.001) * (1 - diversification_bonus)
+
     def _calc_capex(self, design: Dict[str, float]) -> float:
-        """Calculate CAPEX objective."""
-        capex = 0
-        
-        for tech in self.config.get_enabled_technologies():
-            cap = design[f'{tech}_capacity']
-            tech_cost = 2500 if tech == 'wind' else 1800 if tech == 'solar' else 4000
-            capex += cap * tech_cost * 1000  # Convert to absolute cost
-        
-        # Add platform costs
-        platform_area = design.get('platform_area', 10000)
-        capex += platform_area * 500  # £500/m²
-        
+        """Total CAPEX [$] — minimise."""
+        _, _, capex = self._eval_economics(design)
         return capex
     
     def get_pareto_solutions(self, n_solutions: int = 10) -> List[Dict[str, Any]]:
@@ -249,12 +294,17 @@ class MultiObjectiveAnalysis:
         if self.results is None:
             raise ValueError("No results available.")
         
-        return {
+        obj_names = self.results.objective_names
+        summary: Dict[str, Any] = {
             'n_pareto_solutions': len(self.results.pareto_frontier),
-            'objectives': self.results.objective_names,
-            'best_lcoe': min(sol['objectives'][0] for sol in self.results.pareto_frontier 
-                           if 'minimize_lcoe' in self.results.objective_names),
-            'best_npv': max(sol['objectives'][1] for sol in self.results.pareto_frontier
-                          if 'maximize_npv' in self.results.objective_names),
-            'algorithm': self.results.optimization_info.get('algorithm', 'NSGA-II')
+            'objectives': obj_names,
+            'algorithm': self.results.optimization_info.get('algorithm', 'random_search_pareto_filter'),
         }
+        if 'minimize_lcoe' in obj_names:
+            idx = obj_names.index('minimize_lcoe')
+            summary['best_lcoe'] = min(sol['objectives'][idx] for sol in self.results.pareto_frontier)
+        if 'maximize_npv' in obj_names:
+            idx = obj_names.index('maximize_npv')
+            # stored as negative for minimisation, so min gives best (most positive) NPV
+            summary['best_npv'] = -min(sol['objectives'][idx] for sol in self.results.pareto_frontier)
+        return summary

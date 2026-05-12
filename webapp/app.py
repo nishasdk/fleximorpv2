@@ -21,12 +21,16 @@ project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
 try:
-    from fleximorpv2.config import load_config
+    from fleximorpv2.config import load_config, create_default_config, _parse_config
+    from fleximorpv2.baseline_optimization import BaselineOptimization
+    from fleximorpv2.uncertainty_analysis import UncertaintyAnalysis
+    from fleximorpv2.flexible_design import FlexibleDesign
     from fleximorpv2.graphics import GraphicsEngine
+    _REAL_MODULES_AVAILABLE = True
 except ImportError:
-    # Handle case where modules aren't fully implemented yet
     load_config = None
     GraphicsEngine = None
+    _REAL_MODULES_AVAILABLE = False
 
 
 def main():
@@ -105,7 +109,7 @@ def main():
         # Run analysis button
         button_text = "🔄 Rerun Analysis" if st.session_state.analysis_complete else "🚀 Run Complete Analysis"
         if st.button(button_text, type="primary"):
-            run_complete_analysis(latitude, longitude, technologies, target_type, target_value, uncertainty_simulations)
+            run_complete_analysis(latitude, longitude, technologies, target_type, target_value, uncertainty_simulations, site_name=selected_site)
     
     # Main content area
     if not st.session_state.analysis_complete:
@@ -177,18 +181,139 @@ def show_welcome_screen():
             }
 
 
-def run_complete_analysis(latitude, longitude, technologies, target_type, target_value, n_simulations):
+def _baseline_to_webapp_dict(results, config) -> dict:
+    """Convert BaselineResults to webapp display dict."""
+    tech_breakdown = {}
+    for tech, capacity in results.technology_capacities.items():
+        if capacity > 0 and tech in config.technologies:
+            tech_breakdown[tech] = {
+                'capacity': round(capacity, 2),
+                'capacity_factor': config.technologies[tech].capacity_factor,
+                'lcoe': results.financial_metrics.get('lcoe', 0),
+            }
+    annual_energy_mwh = results.technical_metrics.get('annual_energy', 0)
+    return {
+        'lcoe': results.financial_metrics.get('lcoe', 0),
+        'total_capacity': results.technical_metrics.get('total_capacity', 0),
+        'capacity_factor': results.technical_metrics.get('capacity_factor', 0),
+        'annual_production': annual_energy_mwh / 1000,  # MWh → GWh
+        'technology_breakdown': tech_breakdown,
+        'capex': results.financial_metrics.get('capex', 0) / 1e6,
+        'opex': results.financial_metrics.get('opex', 0) / 1e6,
+        'npv': results.financial_metrics.get('npv', 0) / 1e6,
+    }
+
+
+def _uncertainty_to_webapp_dict(results) -> dict:
+    """Convert UncertaintyResults to webapp display dict."""
+    lcoe_mean = results.mean_performance.get('lcoe', 85)
+    lcoe_std = results.std_performance.get('lcoe', 12)
+    percs = results.percentiles.get('lcoe', {})
+    return {
+        'n_simulations': results.uncertainty_info.get('monte_carlo_runs', 0),
+        'lcoe_mean': lcoe_mean,
+        'lcoe_std': lcoe_std,
+        'lcoe_p5': percs.get('p5', lcoe_mean - 1.645 * lcoe_std),
+        'lcoe_p95': percs.get('p95', lcoe_mean + 1.645 * lcoe_std),
+        'var_95': results.risk_metrics.get('lcoe_var_95', lcoe_mean + 1.645 * lcoe_std),
+        'success_probability': 1.0 - results.risk_metrics.get('prob_negative_npv', 0.27),
+    }
+
+
+def _flexibility_to_webapp_dict(results) -> dict:
+    """Convert FlexibleResults to webapp display dict."""
+    flat = results.to_flat_dict()
+    staging = flat.get('optimal_staging', [])
+    triggers = flat.get('expansion_triggers', {})
+
+    expansion_stages = [
+        {
+            'Year': s.get('year', 0),
+            'Capacity (MW)': s.get('capacity_mw', 0),
+            'Technology': ', '.join(s.get('technologies', ['wind'])),
+        }
+        for s in staging
+    ]
+    if not expansion_stages:
+        expansion_stages = [
+            {'Year': 0, 'Capacity (MW)': 40, 'Technology': 'Wind'},
+            {'Year': 3, 'Capacity (MW)': 30, 'Technology': 'Solar'},
+        ]
+
+    decision_triggers = {
+        'electricity_price_threshold': f"≥${triggers.get('electricity_price_threshold', 110):.0f}/MWh",
+        'technology_cost_reduction': f"≥{triggers.get('technology_cost_reduction', 0.15) * 100:.0f}%",
+        'capacity_utilization': f"≥{triggers.get('capacity_utilization', 0.85) * 100:.0f}%",
+    }
+    return {
+        'real_options_value': flat.get('real_options_value', 0),
+        'flexibility_premium': flat.get('flexibility_premium', 0),
+        'expansion_stages': expansion_stages,
+        'decision_triggers': decision_triggers,
+    }
+
+
+_SITE_NAME_MAP = {'alaska': 'alaska', 'blyth': 'blyth', 'eastport': 'eastport'}
+
+
+def _run_real_analysis(site_name, latitude, longitude, technologies, target_type, target_value):
+    """Run real FlexiMORP analysis. Raises on failure so caller can fall back to mock."""
+    site_key = site_name.lower() if site_name.lower() in _SITE_NAME_MAP else None
+
+    if site_key:
+        config = load_config(site_key)
+    else:
+        raw = create_default_config(
+            f"Custom_{latitude:.1f}_{longitude:.1f}", [latitude, longitude]
+        )
+        for tech in ['wind', 'solar', 'wave']:
+            raw['technologies'][tech]['enabled'] = tech in technologies
+        config = _parse_config(raw)
+
+    # Cap MC runs for webapp responsiveness
+    config.uncertainty['monte_carlo_runs'] = min(
+        config.uncertainty.get('monte_carlo_runs', 1000), 50
+    )
+
+    # Step 1: Baseline optimisation (scipy is faster than differential_evolution for webapp)
+    baseline_opt = BaselineOptimization(config)
+    max_cap = config.optimization.get('constraints', {}).get('max_total_capacity', 500)
+    if target_type == 'capacity':
+        avg_cf = 0.35
+        production_kwh = target_value * avg_cf * 8760 * 1000
+    elif target_type == 'production':
+        production_kwh = target_value * 1e6
+    else:
+        production_kwh = max_cap * 0.35 * 8760 * 1000 * 0.5
+    baseline_results = baseline_opt.optimize('production', production_kwh, method='scipy')
+
+    # Step 2: Uncertainty analysis
+    uncertainty_analyzer = UncertaintyAnalysis(config)
+    uncertainty_results = uncertainty_analyzer.analyze_uncertainty(
+        baseline_design=baseline_results.optimal_design, reoptimize=False
+    )
+
+    # Step 3: Flexible design
+    flex_analyzer = FlexibleDesign(config)
+    flex_results = flex_analyzer.analyze_flexibility(baseline_results.optimal_design)
+
+    return (
+        _baseline_to_webapp_dict(baseline_results, config),
+        _uncertainty_to_webapp_dict(uncertainty_results),
+        _flexibility_to_webapp_dict(flex_results),
+    )
+
+
+def run_complete_analysis(latitude, longitude, technologies, target_type, target_value, n_simulations, site_name="Custom"):
     """Run the complete 4-step analysis"""
-    
+
     if not technologies:
         st.error("Please select at least one technology.")
         return
-    
-    # Set analysis running state and clear previous results to force refresh
+
     st.session_state.analysis_running = True
     st.session_state.analysis_complete = False
-    
-    # Add custom CSS for simple progress animation
+
     st.markdown("""
     <style>
     .progress-circle {
@@ -205,93 +330,88 @@ def run_complete_analysis(latitude, longitude, technologies, target_type, target
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
     }
-    /* Hide Streamlit's default loading animations and status indicators */
-    .stSpinner,
-    .stSpinner > div,
-    [data-testid="stStatusWidget"],
-    .stStatus,
+    .stSpinner, .stSpinner > div,
+    [data-testid="stStatusWidget"], .stStatus,
     [data-testid="stAppViewContainer"] .stStatus,
-    .StatusWidget,
-    [class*="StatusWidget"],
-    [class*="stStatus"] {
+    .StatusWidget, [class*="StatusWidget"], [class*="stStatus"] {
         display: none !important;
         visibility: hidden !important;
         opacity: 0 !important;
     }
     </style>
     """, unsafe_allow_html=True)
-    
-    # Energy-related loading icons for each step
-    loading_icons = {
-        1: "⚙️🔧",  # Optimization tools
-        2: "📊🎲",  # Uncertainty/statistics  
-        3: "⚡🔄",  # Flexibility/energy flow
-        4: "🌊🌍"   # Environmental/ocean
-    }
-    
-    # Progress container
+
     progress_container = st.container()
-    
     with progress_container:
         progress_bar = st.progress(0)
         status_container = st.container()
-        
-        # Step 1: Baseline Optimization
-        with status_container:
-            st.markdown('<div class="progress-circle"></div> <strong>Step 1/4:</strong> Optimizing baseline platform design...', unsafe_allow_html=True)
-            import time
-            time.sleep(1)
-        progress_bar.progress(0.25)
-        baseline_result = create_mock_baseline_result(latitude, longitude, technologies, target_type)
-        
-        # Step 2: Uncertainty Analysis
-        status_container.empty()
-        with status_container:
-            st.markdown('<div class="progress-circle"></div> <strong>Step 2/4:</strong> Running Monte Carlo uncertainty analysis...', unsafe_allow_html=True)
-            time.sleep(1)
-        progress_bar.progress(0.50)
-        uncertainty_result = create_mock_uncertainty_result(n_simulations)
-        
-        # Step 3: Flexible Design
-        status_container.empty()
-        with status_container:
-            st.markdown('<div class="progress-circle"></div> <strong>Step 3/4:</strong> Analyzing flexible design strategies...', unsafe_allow_html=True)
-            time.sleep(1)
+
+        baseline_result = None
+        uncertainty_result = None
+        flexibility_result = None
+        used_real_analysis = False
+
+        if _REAL_MODULES_AVAILABLE:
+            with status_container:
+                st.markdown(
+                    '<div class="progress-circle"></div>'
+                    ' <strong>Steps 1–3/4:</strong> Running real optimization & uncertainty analysis...',
+                    unsafe_allow_html=True,
+                )
+            try:
+                baseline_result, uncertainty_result, flexibility_result = _run_real_analysis(
+                    site_name, latitude, longitude, technologies, target_type, target_value
+                )
+                used_real_analysis = True
+            except Exception as exc:
+                st.warning(f"Real analysis unavailable ({type(exc).__name__}: {exc}). Using demonstration data.")
+
+        if baseline_result is None:
+            baseline_result = create_mock_baseline_result(latitude, longitude, technologies, target_type)
+            uncertainty_result = create_mock_uncertainty_result(n_simulations)
+            flexibility_result = create_mock_flexibility_result()
+
         progress_bar.progress(0.75)
-        flexibility_result = create_mock_flexibility_result()
-        
-        # Step 4: Environmental Assessment
+
+        # Step 4: Environmental assessment (always demonstration — environmental.py is incomplete)
         status_container.empty()
         with status_container:
-            st.markdown('<div class="progress-circle"></div> <strong>Step 4/4:</strong> Completing environmental assessment...', unsafe_allow_html=True)
-            time.sleep(1)
-        progress_bar.progress(1.0)
+            st.markdown(
+                '<div class="progress-circle"></div>'
+                ' <strong>Step 4/4:</strong> Completing environmental assessment...',
+                unsafe_allow_html=True,
+            )
         environmental_result = create_mock_environmental_result(latitude, longitude, technologies)
-        
-        # Clear everything when done
+        progress_bar.progress(1.0)
+
         status_container.empty()
         progress_bar.empty()
-    
-    # Store results
-    st.session_state.results = create_mock_results(latitude, longitude, technologies, target_type)
+
+    st.session_state.results = {
+        'baseline': baseline_result,
+        'uncertainty': uncertainty_result,
+        'flexibility': flexibility_result,
+        'environmental': environmental_result,
+    }
     st.session_state.analysis_complete = True
-    st.session_state.analysis_running = False  # Clear running state
-    
-    # Success message with energy icon
-    st.success("⚡ Analysis complete! View results below.")
+    st.session_state.analysis_running = False
+
+    if used_real_analysis:
+        st.success("⚡ Analysis complete using real FlexiMORP optimization!")
+    else:
+        st.success("⚡ Analysis complete! (demonstration data)")
     st.rerun()
 
 
 def show_results_dashboard():
     """Display comprehensive results dashboard"""
-    
+
     results = st.session_state.results
-    
-    # Header with key metrics
-    st.header("📊 Analysis Results")
-    
     baseline = results['baseline']
-    
+
+    st.header("📊 Analysis Results")
+
+    # ── Top key metrics ──────────────────────────────────────────────────────
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Optimal LCOE", f"${baseline['lcoe']:.1f}/MWh", f"{baseline['lcoe']-85:.1f}")
@@ -301,26 +421,169 @@ def show_results_dashboard():
         st.metric("Capacity Factor", f"{baseline['capacity_factor']:.1%}")
     with col4:
         st.metric("Environmental Score", f"{results['environmental']['overall_environmental_score']}/100")
-    
-    # Tabs for different result categories
+
+    st.divider()
+
+    # ── Deployment Rollout Plan ───────────────────────────────────────────────
+    show_rollout_plan(baseline, results['flexibility'])
+
+    st.divider()
+
+    # ── Detailed tabs ─────────────────────────────────────────────────────────
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "🎯 Baseline", "🎲 Uncertainty", "🔄 Flexibility", "🌍 Environmental", "📋 Recommendations"
     ])
-    
+
     with tab1:
         show_baseline_results(results['baseline'])
-    
+
     with tab2:
         show_uncertainty_results(results['uncertainty'])
-    
+
     with tab3:
         show_flexibility_results(results['flexibility'])
-    
+
     with tab4:
         show_environmental_results(results['environmental'])
-    
+
     with tab5:
         show_recommendations()
+
+
+def show_rollout_plan(baseline: dict, flexibility: dict):
+    """Deployment timeline shown on the results home page."""
+
+    stages = flexibility.get('expansion_stages', [])
+    if not stages:
+        return
+
+    st.subheader("Deployment Rollout Plan")
+
+    # Build enriched timeline with cumulative totals
+    sorted_stages = sorted(stages, key=lambda s: s.get('Year', 0))
+    cumulative = 0.0
+    plan_rows = []
+    for i, stage in enumerate(sorted_stages):
+        year = stage.get('Year', 0)
+        cap = float(stage.get('Capacity (MW)', 0))
+        tech = str(stage.get('Technology', 'Mixed')).title()
+        cumulative += cap
+        plan_rows.append({
+            'Phase': f"Phase {i + 1}",
+            'Year': year,
+            'Technology': tech,
+            'New Capacity (MW)': cap,
+            'Cumulative Total (MW)': round(cumulative, 1),
+        })
+    plan_df = pd.DataFrame(plan_rows)
+
+    # Colour palette per technology keyword
+    _TECH_COLOURS = {
+        'Wind':  '#2196F3',
+        'Solar': '#FF9800',
+        'Wave':  '#00BCD4',
+        'Hydro': '#4CAF50',
+        'Mixed': '#9C27B0',
+    }
+
+    def _tech_colour(name: str) -> str:
+        for key, colour in _TECH_COLOURS.items():
+            if key.lower() in name.lower():
+                return colour
+        return '#78909C'
+
+    chart_col, table_col = st.columns([3, 2])
+
+    with chart_col:
+        fig = go.Figure()
+
+        # One bar trace per unique technology label
+        for tech in plan_df['Technology'].unique():
+            rows = plan_df[plan_df['Technology'] == tech]
+            fig.add_trace(go.Bar(
+                x=rows['Year'],
+                y=rows['New Capacity (MW)'],
+                name=tech,
+                marker_color=_tech_colour(tech),
+                text=[f"+{v:.0f} MW" for v in rows['New Capacity (MW)']],
+                textposition='inside',
+                textfont_color='white',
+            ))
+
+        # Cumulative total as a secondary line on the right axis
+        fig.add_trace(go.Scatter(
+            x=plan_df['Year'],
+            y=plan_df['Cumulative Total (MW)'],
+            mode='lines+markers+text',
+            name='Cumulative Total',
+            line=dict(color='#212121', width=2),
+            marker=dict(size=9, symbol='diamond'),
+            text=[f"{v:.0f} MW" for v in plan_df['Cumulative Total (MW)']],
+            textposition='top center',
+            textfont=dict(size=11, color='#212121'),
+            yaxis='y2',
+        ))
+
+        fig.update_layout(
+            barmode='stack',
+            xaxis=dict(
+                title='Project Year',
+                tickmode='array',
+                tickvals=plan_df['Year'].tolist(),
+                ticktext=[f"Year {y}" for y in plan_df['Year']],
+            ),
+            yaxis=dict(title='New Capacity Added (MW)', showgrid=False),
+            yaxis2=dict(
+                title='Cumulative Total (MW)',
+                overlaying='y',
+                side='right',
+                showgrid=True,
+                gridcolor='rgba(0,0,0,0.07)',
+            ),
+            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+            height=360,
+            margin=dict(t=40, b=40, l=10, r=10),
+            plot_bgcolor='white',
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    with table_col:
+        st.markdown("**Phase-by-phase breakdown**")
+
+        # Styled table
+        display_df = plan_df[['Phase', 'Year', 'Technology', 'New Capacity (MW)', 'Cumulative Total (MW)']].copy()
+        try:
+            st.dataframe(
+                display_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    'New Capacity (MW)': st.column_config.NumberColumn(format="%.0f MW"),
+                    'Cumulative Total (MW)': st.column_config.NumberColumn(format="%.0f MW"),
+                },
+            )
+        except Exception:
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+
+        # Summary stats below the table
+        final_cap = plan_df['Cumulative Total (MW)'].iloc[-1]
+        duration = int(plan_df['Year'].max()) - int(plan_df['Year'].min())
+        n_phases = len(plan_df)
+
+        s1, s2, s3 = st.columns(3)
+        s1.metric("Final Capacity", f"{final_cap:.0f} MW")
+        s2.metric("Duration", f"{duration} yrs")
+        s3.metric("Phases", str(n_phases))
+
+        # Technology mix in final fleet
+        tech_totals = plan_df.groupby('Technology')['New Capacity (MW)'].sum()
+        st.markdown("**Final technology mix**")
+        for tech, cap in tech_totals.items():
+            pct = cap / final_cap * 100
+            st.progress(int(pct), text=f"{tech}: {cap:.0f} MW ({pct:.0f}%)")
 
 
 def show_baseline_results(baseline):
@@ -539,9 +802,9 @@ def create_mock_environmental_result(latitude, longitude, technologies):
     """Create mock environmental assessment result"""
     
     # Determine constraint level based on location
-    if latitude > 60:  # Alaska
+    if latitude > 60:  # Arctic / Alaska
         constraint_level = 'high'
-    elif 'Blyth' in str(latitude):  # European waters
+    elif 50 < latitude <= 60:  # Northern European waters (Blyth etc.)
         constraint_level = 'medium'
     else:
         constraint_level = 'low'

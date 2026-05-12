@@ -512,7 +512,7 @@ class TechnologyModel:
         base_cf = hydro_config.get('capacity_factor', 0.25)
         
         # Apply seasonal variation
-        seasonal_variation = river_flow_config.get('seasonal_variation', False)
+        seasonal_variation = hydro_config.get('seasonal_variation', False)
         if seasonal_variation:
             # Simplified seasonal flow modeling
             # Spring melt increases flow, winter decreases it
@@ -528,7 +528,7 @@ class TechnologyModel:
         annual_energy *= availability
         
         # Get technical parameters
-        tech_params = river_flow_config.get('technical_params', {})
+        tech_params = hydro_config.get('technical_params', {})
         area_per_mw = 100  # Small footprint for river turbines
         load_per_mw = 150  # Heavy underwater equipment
         

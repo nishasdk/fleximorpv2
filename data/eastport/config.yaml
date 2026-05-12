@@ -31,23 +31,23 @@ data_sources:
     
   wave_resource:
     source: "copernicus"
-    applicable: false            # Limited due to fishing restrictions
-    tidal_resource: true         # Consider tidal energy potential
+    applicable: false            # Open-ocean wave resource limited in Bay of Fundy
+    tidal_resource: true         # Primary resource — Bay of Fundy extreme tidal range
 
 # User-configurable design variables - constrained by fishing industry
 design_variables:
   technology_mix:
-    status: "constrained"  # Limited by fishing industry constraints
+    status: "constrained"  # Fishing industry shapes siting; tidal actively pursued
     constraints:
-      allowed_technologies: ["wind", "solar"]  # Wave/tidal excluded
+      allowed_technologies: ["wind", "solar", "hydro"]  # hydro = tidal (ORPC TidGen)
       min_technologies: 1
-      max_technologies: 2
+      max_technologies: 3
       environmental_restrictions:
         wind: "Avoid disruption to bird migration and tourism views"
         solar: "Minimize visual impact from historic downtown area"
+        hydro: "Site in Western Passage / Cobscook Bay away from lobster grounds; helical cross-flow turbines shown to have no adverse marine-life impact"
       exclusion_reasons:
-        wave: "Conflicts with lobster fishing grounds and gear"
-        tidal: "Extreme tidal range creates engineering challenges"
+        wave: "Open-ocean wave resource limited inside Bay of Fundy; tidal preferred"
       
   location:
     status: "unknown"  # Optimize location within constraints
@@ -79,6 +79,7 @@ design_variables:
       individual_tech_limits:
         wind: [5, 80]           # Nearshore wind array
         solar: [2, 30]          # Floating solar complement
+        hydro: [0.16, 5.0]      # ORPC TidGen scale: 160 kW per device, ~5 MW full array
 
 # Technology specifications with fishing industry considerations
 technologies:
@@ -119,15 +120,34 @@ technologies:
       
   wave:
     enabled: false
-    exclusion_reason: "Conflicts with lobster fishing industry - primary economic driver"
-    potential_resource: "moderate"  # Bay of Fundy wave resource exists
-    industry_impact: "critical"     # Would disrupt lobster fishing
-    
+    exclusion_reason: "Open-ocean wave resource is limited inside the Bay of Fundy; tidal stream energy (hydro) is the appropriate technology here"
+    potential_resource: "low"       # Fundy geometry attenuates open-ocean swell
+
+  # Tidal stream energy — ORPC TidGen® Power System
+  # Reference: ORPC Western Passage project, Eastport ME (FERC preliminary permit 2023)
+  # First grid-connected tidal project in North America operated here 2012-2013
   hydro:
-    enabled: false
-    exclusion_reason: "Extreme tidal range creates significant engineering challenges"
-    potential_resource: "high"      # Bay of Fundy tidal resource
-    technical_challenges: "extreme tidal range (6m), strong currents"
+    enabled: true
+    resource_type: "tidal_stream"
+    environmental_impact: "low"     # Decade of ORPC data: no observed adverse marine-life impacts
+    ecosystem_concerns:
+      - "Slow helical blade rotation allows fish passage (verified by ORPC environmental studies)"
+      - "Cable routing must avoid lobster gear — burial depth 3 m"
+      - "Coordinate deployment with lobster season (construction Nov-Mar preferred)"
+    fishing_industry_impact: "manageable"  # ORPC demonstrated collaborative co-existence model
+    cost_per_mw: 6000000           # USD — higher than wind due to marine engineering complexity
+    capacity_factor: 0.45          # Tidal stream: predictable; Bay of Fundy ~2.5–3.5 m/s currents
+    resource_type_detail: "Western Passage / Cobscook Bay tidal stream"
+    technical_params:
+      device_name: "TidGen"        # ORPC cross-flow helical turbine
+      device_rating: 0.16          # MW per device (160 kW at 3.5 m/s peak)
+      min_flow_velocity: 1.5       # m/s
+      rated_flow_velocity: 2.25    # m/s (80 kW output)
+      peak_flow_velocity: 3.5      # m/s (160 kW peak)
+      tidal_range: 6.0             # meters (Bay of Fundy — extreme but predictable)
+      availability: 0.90           # Maintenance access constrained by tidal windows
+      fish_friendly_design: true
+      deployment_depth_range: [10, 30]  # meters
 
 # Optimization with fishing industry priority
 optimization:
@@ -186,7 +206,7 @@ flexibility:
   decision_points: [1, 3, 8, 15]   # years - include early exit option
   expansion_options: [10, 20, 30]  # MW increments
   abandonment_option: true         # High regulatory risk
-  technology_switching: false      # Limited by fishing constraints
+  technology_switching: true       # Tidal can be added/scaled at decision points
   adaptive_deployment: true        # Phased to test industry acceptance
   seasonal_restrictions: true      # Coordinate with fishing seasons
 
@@ -207,14 +227,18 @@ grid_connection:
   upgrade_required: true      # Limited rural grid capacity
   interconnection_cost: 15000000  # USD, significant grid investment
 
-# Fishing industry coordination
+# Fishing industry coordination — informed by ORPC co-existence model
 fishing_coordination:
   seasonal_restrictions:
-    lobster_season: "year_round"      # Continuous conflict potential
+    lobster_season: "year_round"      # Year-round, but gear areas can be avoided
     construction_windows: ["Nov-Mar"] # Limited construction seasons
   compensation_mechanism: "revenue_sharing"
   consultation_process: "continuous"
   gear_conflict_mitigation: "cable_burial_depth_3m"
+  orpc_precedent:
+    outcome: "80 jobs created/retained across 8 Maine counties over 2 years"
+    approach: "Local office + staff, fishermen suggested viable sites, no gear conflicts reported"
+    marine_impact: "No adverse marine-life impacts observed over decade of ORPC operation"
 
 # Performance targets
 targets:
