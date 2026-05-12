@@ -2,6 +2,8 @@
 
 An expansion of FlexiMORP v1. Python platform for optimizing offshore renewable energy systems with Monte Carlo uncertainty analysis, real options valuation, and multi-objective Pareto optimization across wind, solar, wave, and tidal technologies.
 
+> **Early development notice:** This project is in a very early stage. All outputs are rough approximations only. Do not use this tool for any actual investment, engineering, or policy analysis. Features and accuracy are being progressively refined.
+
 ## Key Features
 
 ### Analysis Pipeline
@@ -211,6 +213,8 @@ print(f"Recommendation: {comparison['convergence_analysis']['recommendation']}")
 
 ## Roadmap
 
+- [ ] Interactive map for site selection
+- [ ] Customisable technology variables in the web interface
 - [ ] Blyth and Eastport Jupyter notebooks
 - [ ] End-to-end integration test suite
 - [ ] Live API integration (NREL, NASA, Copernicus)
