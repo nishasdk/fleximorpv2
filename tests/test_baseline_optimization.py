@@ -42,10 +42,13 @@ class TestBaselineOptimization:
     def test_decode_variables(self):
         """Test variable decoding."""
         target = OptimizationTarget('location', (60.0, -150.0))
-        x = np.array([50.0, 25.0, 10000, 50, 20])  # wind, solar, area, depth, distance
-        
+        # Alaska config enables wind + solar + hydro (3 techs) + 3 platform vars = 6 elements
+        n_techs = len(self.config.get_enabled_technologies())
+        x_vals = [50.0, 25.0, 5.0][:n_techs] + [10000, 50, 20]
+        x = np.array(x_vals)
+
         decoded = self.optimizer._decode_variables(x, target)
-        
+
         assert 'wind_capacity' in decoded
         assert decoded['platform_area'] == 10000
         assert decoded['water_depth'] == 50

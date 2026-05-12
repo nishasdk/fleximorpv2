@@ -165,21 +165,46 @@ class SensitivityAnalysis:
         return sensitivities
     
     def _global_sensitivity(self, baseline_design: Dict[str, Any], n_samples: int) -> Dict[str, Dict[str, float]]:
-        """Perform global sensitivity analysis using Sobol indices."""
-        # Mock implementation - real version would use SALib
-        global_results = {}
-        
-        for param_name in self.sensitive_parameters.keys():
-            # Mock Sobol indices
-            first_order = np.random.uniform(0, 0.3)
-            total_order = first_order + np.random.uniform(0, 0.1)
-            
+        """Estimate global sensitivity via one-at-a-time variance decomposition.
+
+        Each parameter is sampled across its full range while others are held at
+        their base values. The fraction of total output variance explained by each
+        parameter approximates its first-order Sobol index.
+        """
+        # Evaluate at baseline once
+        baseline_perf = self._evaluate_design(baseline_design)
+        baseline_lcoe = baseline_perf.get('lcoe', 0)
+
+        param_lcoes: Dict[str, List[float]] = {}
+        rng = np.random.default_rng(seed=42)
+
+        for param_name, param_info in self.sensitive_parameters.items():
+            low, high = param_info['range']
+            samples = rng.uniform(low, high, n_samples)
+            lcoe_values = []
+            for val in samples:
+                perturbed = baseline_design.copy()
+                perturbed[param_name] = val
+                perf = self._evaluate_design(perturbed)
+                lcoe_values.append(perf.get('lcoe', baseline_lcoe))
+            param_lcoes[param_name] = lcoe_values
+
+        # Total variance across all samples
+        all_lcoes = [v for vals in param_lcoes.values() for v in vals]
+        total_var = float(np.var(all_lcoes)) if all_lcoes else 1.0
+        if total_var == 0:
+            total_var = 1.0
+
+        global_results: Dict[str, Dict[str, float]] = {}
+        for param_name, lcoe_vals in param_lcoes.items():
+            param_var = float(np.var(lcoe_vals))
+            first_order = min(1.0, param_var / total_var)
             global_results[param_name] = {
                 'first_order': first_order,
-                'total_order': total_order,
-                'interaction': max(0, total_order - first_order)
+                'total_order': first_order,  # One-at-a-time: total ≈ first order
+                'interaction': 0.0,
             }
-        
+
         return global_results
     
     def _scenario_analysis(self, baseline_design: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
@@ -231,20 +256,45 @@ class SensitivityAnalysis:
         return scenario_results
     
     def _analyze_interactions(self, baseline_design: Dict[str, Any]) -> Dict[str, float]:
-        """Analyze parameter interaction effects."""
-        interactions = {}
-        
-        # Mock interaction analysis
+        """Estimate pairwise interaction effects via finite differences."""
+        baseline_perf = self._evaluate_design(baseline_design)
+        baseline_lcoe = baseline_perf.get('lcoe', 0)
+
         param_pairs = [
             ('wind_capacity_factor', 'electricity_price'),
             ('wind_capex', 'discount_rate'),
-            ('water_depth', 'wave_capex')
+            ('water_depth', 'wave_capex'),
         ]
-        
+
+        interactions: Dict[str, float] = {}
         for param1, param2 in param_pairs:
-            interaction_key = f"{param1}_x_{param2}"
-            interactions[interaction_key] = np.random.uniform(-0.1, 0.1)
-        
+            info1 = self.sensitive_parameters.get(param1)
+            info2 = self.sensitive_parameters.get(param2)
+            if not info1 or not info2:
+                interactions[f"{param1}_x_{param2}"] = 0.0
+                continue
+
+            delta1 = (info1['range'][1] - info1['range'][0]) * 0.1
+            delta2 = (info2['range'][1] - info2['range'][0]) * 0.1
+
+            d1 = baseline_design.copy()
+            d1[param1] = info1['base'] + delta1
+            d2 = baseline_design.copy()
+            d2[param2] = info2['base'] + delta2
+            d12 = baseline_design.copy()
+            d12[param1] = info1['base'] + delta1
+            d12[param2] = info2['base'] + delta2
+
+            lcoe1 = self._evaluate_design(d1).get('lcoe', baseline_lcoe)
+            lcoe2 = self._evaluate_design(d2).get('lcoe', baseline_lcoe)
+            lcoe12 = self._evaluate_design(d12).get('lcoe', baseline_lcoe)
+
+            # Interaction = joint effect minus individual effects
+            interaction = ((lcoe12 - baseline_lcoe) - (lcoe1 - baseline_lcoe) - (lcoe2 - baseline_lcoe))
+            if baseline_lcoe != 0:
+                interaction /= baseline_lcoe  # normalise to fraction
+            interactions[f"{param1}_x_{param2}"] = interaction
+
         return interactions
     
     def _rank_parameters(self, results: Dict[str, Any]) -> List[Tuple[str, float]]:
@@ -267,29 +317,59 @@ class SensitivityAnalysis:
         return rankings
     
     def _evaluate_design(self, design: Dict[str, Any]) -> Dict[str, float]:
-        """Evaluate design performance for sensitivity analysis."""
-        # Mock evaluation - real version would use actual models
-        
-        # Extract key parameters
-        wind_cf = design.get('wind_capacity_factor', 0.4)
-        wind_capex = design.get('wind_capex', 2500)
-        elec_price = design.get('electricity_price', 85)
-        discount_rate = design.get('discount_rate', 0.08)
-        
-        # Mock LCOE calculation
-        lcoe = (wind_capex * 1000) / (wind_cf * 8760 * elec_price / discount_rate)
-        lcoe *= np.random.uniform(0.9, 1.1)  # Add some randomness
-        
-        # Mock other metrics
-        npv = 50e6 * np.random.uniform(0.8, 1.2)
-        capacity_factor = wind_cf * np.random.uniform(0.95, 1.05)
-        
+        """Evaluate design performance using analytical LCOE model."""
+        enabled_techs = self.config.get_enabled_technologies()
+
+        discount_rate = design.get('discount_rate', self.config.economic.get('discount_rate', 0.08))
+        project_life = int(design.get('project_lifetime', self.config.economic.get('project_lifetime', 25)))
+
+        # Normalise electricity_price to $/MWh (config may store $/kWh)
+        config_price = self.config.economic.get('electricity_price', 0.085)
+        if config_price < 5:
+            config_price = config_price * 1000
+        electricity_price = design.get('electricity_price', config_price)
+
+        crf = (discount_rate * (1 + discount_rate) ** project_life) / ((1 + discount_rate) ** project_life - 1)
+        annuity = (1 - (1 + discount_rate) ** (-project_life)) / discount_rate
+
+        total_capex = 0.0
+        total_annual_energy = 0.0
+        total_capacity = 0.0
+
+        for tech in enabled_techs:
+            capacity = design.get(f'{tech}_capacity', 0.0)
+            if capacity <= 0:
+                continue
+
+            cf = design.get(f'{tech}_capacity_factor', self.config.technologies[tech].capacity_factor)
+
+            if f'{tech}_capex' in design:
+                cost_per_mw = design[f'{tech}_capex'] * 1000  # $/kW → $/MW
+            else:
+                cost_per_mw = self.config.technologies[tech].cost_per_mw
+
+            total_capex += capacity * cost_per_mw
+            total_annual_energy += cf * capacity * 8760
+            total_capacity += capacity
+
+        if total_capacity <= 0 or total_annual_energy <= 0:
+            return {
+                'lcoe': float('inf'), 'npv': 0.0,
+                'capacity_factor': 0.0, 'capex': total_capex, 'annual_energy': 0.0
+            }
+
+        annual_opex = total_capex * 0.02  # 2% of CAPEX per year
+        lcoe = (total_capex * crf + annual_opex) / total_annual_energy  # $/MWh
+
+        annual_revenue = total_annual_energy * electricity_price
+        npv = -total_capex + (annual_revenue - annual_opex) * annuity
+
         return {
-            'lcoe': max(50, lcoe),
+            'lcoe': max(0, lcoe),
             'npv': npv,
-            'capacity_factor': min(1.0, capacity_factor),
-            'capex': wind_capex * 100,  # Assume 100 MW
-            'annual_energy': capacity_factor * 8760 * 100  # GWh
+            'capacity_factor': total_annual_energy / (total_capacity * 8760),
+            'capex': total_capex,
+            'annual_energy': total_annual_energy
         }
     
     def get_top_parameters(self, n: int = 5) -> List[Tuple[str, float]]:

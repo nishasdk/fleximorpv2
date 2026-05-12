@@ -274,7 +274,7 @@ class EconomicModel:
         """Calculate key economic performance metrics."""
         
         capex = costs['capex']
-        opex = revenues['revenue']
+        opex = costs['opex']
         annual_revenue = revenues['revenue']
         
         # Project parameters

@@ -237,7 +237,6 @@ class GraphicsEngine:
         """Create comprehensive comparison plot."""
         
         fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
         
         # LCOE comparison
         analysis_types = ['Baseline', 'Uncertainty', 'Flexibility']

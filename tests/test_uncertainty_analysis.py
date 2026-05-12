@@ -12,21 +12,23 @@ from fleximorpv2.config import SiteConfig, load_config
 
 class TestUncertaintyAnalysis:
     """Test uncertainty analysis functionality."""
-    
+
     def setup_method(self):
         self.config = load_config("alaska")
+        # Cap MC runs so unit tests stay fast
+        self.config.uncertainty["monte_carlo_runs"] = 20
         self.analyzer = UncertaintyAnalysis(self.config)
-    
+
     def test_initialization(self):
         """Test analyzer initialization."""
         assert self.analyzer.config == self.config
         assert self.analyzer.uncertainty_params.monte_carlo_runs > 0
         assert hasattr(self.analyzer, 'distributions')
-    
+
     def test_scenario_generation(self):
         """Test Monte Carlo scenario generation."""
-        scenarios = self.analyzer._generate_scenarios()
-        
+        scenarios = self.analyzer._generate_scenarios(sampling_method='monte_carlo')
+
         assert len(scenarios) == self.analyzer.uncertainty_params.monte_carlo_runs
         assert all(isinstance(s, dict) for s in scenarios)
     
