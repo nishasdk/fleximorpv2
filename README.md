@@ -1,6 +1,6 @@
 # FlexiMORP v2 - Offshore Renewable Energy Optimization Platform
 
-Python platform for optimizing offshore renewable energy systems — Monte Carlo uncertainty analysis, real options valuation, and multi-objective Pareto optimization across wind, solar, wave, and tidal technologies.
+An expansion of FlexiMORP v1. Python platform for optimizing offshore renewable energy systems with Monte Carlo uncertainty analysis, real options valuation, and multi-objective Pareto optimization across wind, solar, wave, and tidal technologies.
 
 ## Key Features
 
@@ -39,11 +39,9 @@ Python platform for optimizing offshore renewable energy systems — Monte Carlo
 
 ### Quick Start
 ```bash
-# Clone repository
 git clone https://github.com/nishasdk/fleximorpv2.git
 cd fleximorpv2
 
-# Install dependencies
 pip install -r requirements.txt
 
 # Run tests to verify installation
@@ -54,7 +52,7 @@ streamlit run webapp/app.py
 ```
 
 ### API Configuration (Optional)
-The system includes synthetic demo data, but for live resource assessment obtain free API keys:
+The system includes synthetic demo data. For live resource assessment, obtain free API keys:
 
 - **NREL**: [developer.nrel.gov](https://developer.nrel.gov)
 - **NASA**: [api.nasa.gov](https://api.nasa.gov)
@@ -63,25 +61,25 @@ The system includes synthetic demo data, but for live resource assessment obtain
 
 ## Case Studies
 
-### Alaska — Igiugig Remote Community
+### Alaska - Igiugig Remote Community
 - **Focus**: Energy independence for a remote Yup'ik community on the Kvichak River
 - **Challenges**: Extreme weather, sea ice, riverine siting, indigenous consultation
 - **Technologies**: Wind + Solar + Tidal/Hydro (river flow turbines)
 - **Key Constraints**: Salmon spawning grounds, traditional fishing areas, community ownership
 - **Analysis**: TRIO optimization with MCDA (LCOE, emissions, social acceptance, aquaculture synergy)
 
-### Blyth — Offshore Wind Farm
+### Blyth - Offshore Wind Farm
 - **Focus**: Large-scale commercial offshore development in the North Sea
 - **Challenges**: Grid integration, marine ecology, fishing conflicts
 - **Technologies**: Wind + Solar + Wave hybrid system
 - **Key Constraints**: Commercial fishing areas, shipping lanes
 
-### Eastport, Maine — Tidal-Constrained Site
+### Eastport, Maine - Tidal-Constrained Site
 - **Focus**: Development alongside active lobster fishing industry
 - **Challenges**: Fishing industry co-existence, seasonal restrictions, permitting
 - **Technologies**: Wind + Solar + Tidal (ORPC TidGen, Western Passage)
 - **Key Constraints**: Lobster grounds, Passamaquoddy tribal interests, ferry routes
-- **Reference**: [ORPC Western Passage project](https://orpc.co) — first grid-connected tidal installation in North America
+- **Reference**: [ORPC Western Passage project](https://orpc.co) - first grid-connected tidal installation in North America
 
 ## Usage Examples
 
@@ -96,7 +94,6 @@ streamlit run webapp/app.py
 from fleximorpv2 import BaselineOptimization, UncertaintyAnalysis
 from fleximorpv2.config import load_config
 
-# Load site configuration
 config = load_config("blyth")
 
 # Step 1: Baseline optimization
@@ -121,21 +118,19 @@ lhs_results = uncertainty.analyze_uncertainty(
     reoptimize=False
 )
 
-# Compare sampling methods
 comparison = uncertainty.compare_sampling_methods(
     baseline_design=baseline_results.optimal_design,
     n_runs=500
 )
 
-print(f"Baseline LCOE: £{baseline_results.financial_metrics['lcoe']:.2f}/MWh")
-print(f"Monte Carlo LCOE: £{mc_results.mean_performance['lcoe']:.2f}/MWh")
-print(f"Latin Hypercube LCOE: £{lhs_results.mean_performance['lcoe']:.2f}/MWh")
+print(f"Baseline LCOE: {baseline_results.financial_metrics['lcoe']:.2f}/MWh")
+print(f"Monte Carlo LCOE: {mc_results.mean_performance['lcoe']:.2f}/MWh")
+print(f"Latin Hypercube LCOE: {lhs_results.mean_performance['lcoe']:.2f}/MWh")
 print(f"Convergence: {comparison['convergence_analysis']['recommendation']}")
 ```
 
 ### Alaska Notebook
 ```bash
-# Interactive Jupyter notebook
 jupyter notebook notebooks/alaska_analysis.ipynb
 ```
 
@@ -185,21 +180,21 @@ python -m pytest tests/ -v -m integration
 ```
 
 ### Test Coverage
-- ✅ Baseline optimization algorithms and constraint handling
-- ✅ Uncertainty analysis — Monte Carlo and Latin Hypercube sampling
-- ✅ MCDA analysis with entropy weighting and TOPSIS
-- ✅ Configuration loading and validation
-- ✅ Sensitivity analysis parameter rankings
-- ✅ Sampling method comparison
-- ⚠️ End-to-end workflow integration _(planned)_
-- ⚠️ API integration tests _(planned)_
+- Baseline optimization algorithms and constraint handling
+- Uncertainty analysis - Monte Carlo and Latin Hypercube sampling
+- MCDA analysis with entropy weighting and TOPSIS
+- Configuration loading and validation
+- Sensitivity analysis parameter rankings
+- Sampling method comparison
+- End-to-end workflow integration _(planned)_
+- API integration tests _(planned)_
 
 ## Sampling Method Comparison
 
 ### Monte Carlo Sampling
 - **Approach**: Random sampling from distributions
 - **Use case**: General uncertainty analysis, well-understood method
-- **Convergence**: O(1/√n)
+- **Convergence**: O(1/sqrt(n))
 
 ### Latin Hypercube Sampling
 - **Approach**: Stratified sampling ensuring better space coverage
@@ -227,128 +222,21 @@ print(f"Recommendation: {comparison['convergence_analysis']['recommendation']}")
 ## Contributing
 
 1. Fork the repository
-2. Create feature branch (`git checkout -b feature/new-feature`)
+2. Create a feature branch (`git checkout -b feature/new-feature`)
 3. Commit changes (`git commit -m 'Add new feature'`)
-4. **Run tests** (`python -m pytest tests/`)
+4. Run tests (`python -m pytest tests/`)
 5. Push to branch and open a Pull Request
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
-<<<<<<< HEAD
-## 🙏 Acknowledgments
-
 - **NREL** - Renewable resource data and technology databases
-- **NASA** - Climate and weather data services  
+- **NASA** - Climate and weather data services
 - **Copernicus** - European environmental monitoring program
 - **OpenWeather** - Real-time weather data services
+- **ORPC** - Tidal energy reference project, Eastport ME
 - **Streamlit** - Interactive web application framework
 - **SciPy** - Scientific computing including Latin Hypercube sampling
-
-## 📞 Support
-
-- **Documentation**: `/docs` directory and inline docstrings
-- **Issues**: GitHub Issues tracker
-- **Tests**: Run `python -m pytest tests/` to verify functionality
-- **Examples**: See `notebooks/` and `example_integration.py`
-
-## 📁 Project Structure
-
-```
-fleximorpv2/
-├── fleximorpv2/                   # Core Python package
-│   ├── baseline_optimization.py   # Step 1: Deterministic optimization
-│   ├── uncertainty_analysis.py    # Step 2: Monte Carlo & Latin Hypercube sampling
-│   ├── flexible_design.py         # Step 3: Real options analysis
-│   ├── sensitivity_analysis.py    # Step 4: Parameter sensitivity
-│   ├── config.py                 # Configuration management
-│   ├── graphics.py               # Visualization utilities
-│   ├── api/                      # API integration layer
-│   │   ├── __init__.py
-│   │   ├── base_api.py          # Common API functionality
-│   │   ├── cache_manager.py     # Intelligent caching
-│   │   ├── nasa_api.py          # NASA climate data
-│   │   ├── nrel_api.py          # NREL resource data
-│   │   ├── copernicus_api.py    # Copernicus marine data
-│   │   └── openweather_api.py   # Real-time weather
-│   ├── models/                   # Core models
-│   │   ├── __init__.py
-│   │   ├── platform.py          # Platform design model
-│   │   ├── technologies.py      # Technology performance models
-│   │   └── economics.py         # Economic evaluation
-│   └── utils/                    # Utilities
-│       ├── __init__.py
-│       ├── data_loader.py       # API data integration
-│       ├── optimization.py      # Optimization algorithms
-│       ├── financial.py         # Financial calculations
-│       ├── environmental.py     # Environmental assessment
-│       ├── decision_trees.py    # Real options modeling
-│       └── visualization.py     # Advanced plotting
-├── data/                         # Case study data
-│   ├── alaska/                  # Alaska remote community case
-│   │   ├── config.yaml          # Site configuration
-│   │   ├── inputs/              # Input data and constraints
-│   │   │   ├── environmental_constraints.py
-│   │   │   ├── stakeholder_preferences.py
-│   │   │   └── weather_data.csv
-│   │   └── results/             # Analysis results
-│   │       ├── baseline/        # Baseline optimization results
-│   │       ├── uncertainty/     # Uncertainty analysis results
-│   │       ├── flexible/        # Flexible design results
-│   │       └── sensitivity/     # Sensitivity analysis results
-│   ├── blyth/                   # Blyth offshore wind case
-│   │   ├── config.yaml
-│   │   ├── inputs/
-│   │   └── results/
-│   │       ├── baseline/
-│   │       ├── uncertainty/
-│   │       ├── flexible/
-│   │       └── sensitivity/
-│   └── eastport/                # Eastport fishing-constrained case
-│       ├── config.yaml
-│       ├── inputs/
-│       └── results/
-├── notebooks/                    # Jupyter analysis notebooks
-│   ├── alaska_trio_mcda_analysis.ipynb     # Alaska TRIO-MCDA analysis
-│   ├── alaska_complete_analysis.py         # Complete Alaska analysis script
-│   ├── blyth_analysis.ipynb               # Blyth case study (planned)
-│   └── eastport_analysis.ipynb            # Eastport case study (planned)
-├── webapp/                       # Streamlit web application
-│   ├── app.py                   # Main web interface
-│   ├── components/              # UI components
-│   ├── pages/                   # Multi-page interface
-│   └── assets/                  # Static assets
-├── tests/                        # Comprehensive test suite
-│   ├── conftest.py              # Pytest configuration and fixtures
-│   ├── run_tests.py             # Test runner script
-│   ├── test_baseline_optimization.py      # Baseline optimization tests
-│   ├── test_uncertainty_analysis.py       # Uncertainty analysis tests
-│   ├── test_integration.py                # End-to-end workflow tests
-│   └── test_mcda_analysis.py              # TRIO-MCDA functionality tests
-├── cache/                        # API response caching
-│   ├── nasa/                    # NASA data cache
-│   ├── nrel/                    # NREL data cache
-│   ├── copernicus/              # Copernicus cache
-│   └── openweather/             # OpenWeather cache
-├── docs/                         # Documentation
-├── requirements.txt              # Python dependencies
-├── example_integration.py        # Example usage script
-├── test_sampling_methods.py      # Sampling method comparison test
-└── README.md                    # This file
-```
-
----
-
-**FlexiMORP v2** - Production-ready offshore renewable energy optimization platform with comprehensive uncertainty analysis, advanced sampling methods, real options valuation, and interactive web interface.
-=======
-- **NREL** — Renewable resource data and technology databases
-- **NASA** — Climate and weather data services
-- **Copernicus** — European environmental monitoring program
-- **OpenWeather** — Real-time weather data services
-- **ORPC** — Tidal energy reference project, Eastport ME
-- **Streamlit** — Interactive web application framework
-- **SciPy** — Scientific computing including Latin Hypercube sampling
->>>>>>> c6f0d3c (Rewrite README to reflect actual codebase state)
