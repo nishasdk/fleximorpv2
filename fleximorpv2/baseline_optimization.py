@@ -105,6 +105,14 @@ class BaselineOptimization:
             'water_depth': (20, 200),          # meters
             'distance_to_shore': (5, 100),     # km
         })
+
+    def _get_max_total_capacity(self) -> float:
+        """Return the configured aggregate capacity limit."""
+        return self.config.optimization.get('constraints', {}).get('max_total_capacity', float('inf'))
+
+    def _get_enabled_capacity_count(self) -> int:
+        """Return the number of active capacity decision variables."""
+        return len(self.config.get_enabled_technologies())
     
     def optimize(self, 
                 target_type: str, 
@@ -265,7 +273,7 @@ class BaselineOptimization:
         """Evaluate platform performance for given design variables."""
         
         # === Hard Constraints on Capacity and CapEx ===
-        max_total_capacity = self.config.optimization.get('constraints', {}).get('max_total_capacity', 2.0)  # MW
+        max_total_capacity = self._get_max_total_capacity()  # MW
         max_investment = self.config.optimization.get('constraints', {}).get('max_investment', 5_000_000)   # USD
 
         # Extract capacities
@@ -287,7 +295,7 @@ class BaselineOptimization:
 
         # Enforce hard limits
         if total_capacity > max_total_capacity:
-            print(f"❌ Rejecting: total capacity {total_capacity:.2f} MW exceeds {max_total_capacity} MW")
+            print(f"Rejecting: total capacity {total_capacity:.2f} MW exceeds {max_total_capacity} MW")
             # Return penalty dictionary for expected keys
             return {
                 'lcoe': 1e9,
@@ -300,7 +308,7 @@ class BaselineOptimization:
             }
 
         if total_capex > max_investment:
-            print(f"❌ Rejecting: total CapEx ${total_capex:,.0f} exceeds budget ${max_investment:,.0f}")
+            print(f"Rejecting: total CapEx ${total_capex:,.0f} exceeds budget ${max_investment:,.0f}")
             return {
                 'lcoe': 1e9,
                 'npv': -1e9,
