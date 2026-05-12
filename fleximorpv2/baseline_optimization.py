@@ -146,9 +146,9 @@ class BaselineOptimization:
         
         # Run optimization
         if method == 'differential_evolution':
-            result = self._optimize_differential_evolution(objective_func, **kwargs)
+            result = self._optimize_differential_evolution(objective_func, target, **kwargs)
         elif method == 'scipy':
-            result = self._optimize_scipy(objective_func, **kwargs)
+            result = self._optimize_scipy(objective_func, target, **kwargs)
         else:
             raise ValueError(f"Unknown optimization method: {method}")
         
@@ -377,22 +377,49 @@ class BaselineOptimization:
         
         return performance
     
-    def _optimize_differential_evolution(self, objective_func, **kwargs) -> Any:
-        """Run optimization using differential evolution."""
-        
-        # Get bounds for enabled variables
-        bounds_list = []
+    def _get_optimized_technologies(self, target: OptimizationTarget) -> List[str]:
+        """Return enabled technologies that should receive optimization variables."""
         enabled_techs = self.config.get_enabled_technologies()
-        
-        for tech_name in enabled_techs:
-            bounds_list.append(self.bounds[f'{tech_name}_capacity'])
-        
-        # Add platform design bounds
+
+        if (
+            target.target_type == 'technologies'
+            and hasattr(target.target_value, '__iter__')
+            and not isinstance(target.target_value, str)
+        ):
+            return [tech for tech in enabled_techs if tech in target.target_value]
+
+        return enabled_techs
+
+    def _get_capacity_bounds(self, target: OptimizationTarget) -> List[Tuple[float, float]]:
+        """Build capacity bounds for optimized technology variables."""
+        constraints = self.config.optimization.get('constraints', {})
+        max_total_capacity = constraints.get('max_total_capacity', 500)
+        return [(0.0, max_total_capacity) for _ in self._get_optimized_technologies(target)]
+
+    def _get_bounds_list(self, target: OptimizationTarget) -> List[Tuple[float, float]]:
+        """Build bounds for the optimizer variable vector."""
+        bounds_list = self._get_capacity_bounds(target)
         bounds_list.extend([
             self.bounds['platform_area'],
-            self.bounds['water_depth'], 
+            self.bounds['water_depth'],
             self.bounds['distance_to_shore']
         ])
+        return bounds_list
+
+    def _get_capacity_variable_count(self, target: OptimizationTarget) -> int:
+        """Return number of capacity variables in the optimization vector."""
+        return len(self._get_optimized_technologies(target))
+
+    def _estimate_capacity_capex(self, x: np.ndarray, target: OptimizationTarget) -> float:
+        """Estimate technology CapEx from the optimizer vector."""
+        total_capex = 0.0
+        for i, tech_name in enumerate(self._get_optimized_technologies(target)):
+            total_capex += x[i] * self.config.technologies[tech_name].cost_per_mw
+        return total_capex
+
+    def _optimize_differential_evolution(self, objective_func, target: OptimizationTarget, **kwargs) -> Any:
+        """Run optimization using differential evolution."""
+        bounds_list = self._get_bounds_list(target)
         
         # Prepare differential evolution parameters
         de_params = {
@@ -436,43 +463,70 @@ class BaselineOptimization:
         
         return result
     
-    def _optimize_scipy(self, objective_func, **kwargs) -> Any:
+    def _optimize_scipy(self, objective_func, target: OptimizationTarget, **kwargs) -> Any:
         """Run optimization using scipy minimize."""
         
         # Initial guess
-        x0 = self._get_initial_guess()
+        x0 = self._get_initial_guess(target)
         
         # Get bounds
-        bounds_list = []
-        enabled_techs = self.config.get_enabled_technologies()
-        
-        for tech_name in enabled_techs:
-            bounds_list.append(self.bounds[f'{tech_name}_capacity'])
-        
-        bounds_list.extend([
-            self.bounds['platform_area'],
-            self.bounds['water_depth'],
-            self.bounds['distance_to_shore']
-        ])
+        bounds_list = self._get_bounds_list(target)
+
+        constraints_config = self.config.optimization.get('constraints', {})
+        capacity_var_count = self._get_capacity_variable_count(target)
+        scipy_constraints = []
+
+        max_total_capacity = constraints_config.get('max_total_capacity')
+        if max_total_capacity is not None:
+            scipy_constraints.append({
+                'type': 'ineq',
+                'fun': lambda x, max_capacity=max_total_capacity: (
+                    max_capacity - float(np.sum(x[:capacity_var_count]))
+                )
+            })
+
+        max_investment = constraints_config.get('max_investment')
+        if max_investment is not None:
+            scipy_constraints.append({
+                'type': 'ineq',
+                'fun': lambda x, max_capex=max_investment: (
+                    max_capex - self._estimate_capacity_capex(x, target)
+                )
+            })
+
+        method = kwargs.get('scipy_method', kwargs.get('optimizer_method', 'SLSQP'))
         
         # Run scipy optimization
         result = minimize(
             objective_func,
             x0=x0,
             bounds=bounds_list,
-            method=kwargs.get('method', 'L-BFGS-B'),
+            constraints=scipy_constraints,
+            method=method,
             options={'disp': True, 'maxiter': kwargs.get('maxiter', 1000)}
         )
         
         return result
     
-    def _get_initial_guess(self) -> np.ndarray:
+    def _get_initial_guess(self, target: Optional[OptimizationTarget] = None) -> np.ndarray:
         """Generate initial guess for optimization variables."""
         x0 = []
-        
-        # Technology capacities - start with reasonable defaults
-        for tech_name in self.config.get_enabled_technologies():
-            x0.append(50.0)  # 50 MW default
+
+        if target is None:
+            target = OptimizationTarget('production', 0)
+
+        optimized_techs = self._get_optimized_technologies(target)
+        constraints = self.config.optimization.get('constraints', {})
+        max_total_capacity = constraints.get('max_total_capacity')
+
+        if optimized_techs:
+            if max_total_capacity is None:
+                starting_capacity = 50.0
+            else:
+                starting_capacity = max_total_capacity / len(optimized_techs)
+
+            for _ in optimized_techs:
+                x0.append(starting_capacity)
         
         # Platform design variables
         x0.extend([10000, 50, 20])  # platform_area, water_depth, distance_to_shore
