@@ -7,7 +7,7 @@ location, technology mix, and production targets.
 """
 
 import numpy as np
-from scipy.optimize import minimize, differential_evolution
+from scipy.optimize import minimize, differential_evolution, LinearConstraint
 from typing import Dict, Any, List, Tuple, Optional, Union
 from dataclasses import dataclass
 import json
@@ -417,6 +417,27 @@ class BaselineOptimization:
             total_capex += x[i] * self.config.technologies[tech_name].cost_per_mw
         return total_capex
 
+    def _get_linear_constraints(self, target: OptimizationTarget, variable_count: int) -> List[LinearConstraint]:
+        """Build linear optimizer constraints for capacity and investment limits."""
+        constraints_config = self.config.optimization.get('constraints', {})
+        capacity_var_count = self._get_capacity_variable_count(target)
+        linear_constraints = []
+
+        max_total_capacity = constraints_config.get('max_total_capacity')
+        if max_total_capacity is not None:
+            coefficients = np.zeros(variable_count)
+            coefficients[:capacity_var_count] = 1.0
+            linear_constraints.append(LinearConstraint(coefficients, -np.inf, max_total_capacity))
+
+        max_investment = constraints_config.get('max_investment')
+        if max_investment is not None:
+            coefficients = np.zeros(variable_count)
+            for i, tech_name in enumerate(self._get_optimized_technologies(target)):
+                coefficients[i] = self.config.technologies[tech_name].cost_per_mw
+            linear_constraints.append(LinearConstraint(coefficients, -np.inf, max_investment))
+
+        return linear_constraints
+
     def _optimize_differential_evolution(self, objective_func, target: OptimizationTarget, **kwargs) -> Any:
         """Run optimization using differential evolution."""
         bounds_list = self._get_bounds_list(target)
@@ -428,6 +449,10 @@ class BaselineOptimization:
             'popsize': kwargs.get('popsize', 15),
             'disp': True
         }
+
+        linear_constraints = self._get_linear_constraints(target, len(bounds_list))
+        if linear_constraints:
+            de_params['constraints'] = tuple(linear_constraints)
         
         # Handle seed parameter - check if it's supported in current scipy version
         if 'random_state' in kwargs or 'seed' in kwargs:
@@ -472,27 +497,7 @@ class BaselineOptimization:
         # Get bounds
         bounds_list = self._get_bounds_list(target)
 
-        constraints_config = self.config.optimization.get('constraints', {})
-        capacity_var_count = self._get_capacity_variable_count(target)
-        scipy_constraints = []
-
-        max_total_capacity = constraints_config.get('max_total_capacity')
-        if max_total_capacity is not None:
-            scipy_constraints.append({
-                'type': 'ineq',
-                'fun': lambda x, max_capacity=max_total_capacity: (
-                    max_capacity - float(np.sum(x[:capacity_var_count]))
-                )
-            })
-
-        max_investment = constraints_config.get('max_investment')
-        if max_investment is not None:
-            scipy_constraints.append({
-                'type': 'ineq',
-                'fun': lambda x, max_capex=max_investment: (
-                    max_capex - self._estimate_capacity_capex(x, target)
-                )
-            })
+        scipy_constraints = self._get_linear_constraints(target, len(bounds_list))
 
         method = kwargs.get('scipy_method', kwargs.get('optimizer_method', 'SLSQP'))
         
