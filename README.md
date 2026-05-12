@@ -1,27 +1,28 @@
 # FlexiMORP v2 - Offshore Renewable Energy Optimization Platform
 
-## 🌊 Advanced Multi-Step Analysis for Offshore Renewable Systems
+Python platform for optimizing offshore renewable energy systems — Monte Carlo uncertainty analysis, real options valuation, and multi-objective Pareto optimization across wind, solar, wave, and tidal technologies.
 
-An expansion from v1 - FlexiMORP v2 is a comprehensive Python platform for optimizing offshore renewable energy systems through a structured 4-step analysis framework with real options analysis and uncertainty quantification.
+## Key Features
 
-## 🚀 Key Features
-
-### Core Analysis Framework
+### Analysis Pipeline
 1. **Baseline Optimization** - Deterministic optimal design under perfect information
 2. **Uncertainty Analysis** - Monte Carlo and Latin Hypercube sampling with robust optimization
-3. **Flexible Design** - Real options analysis with expansion/abandonment strategies  
-4. **Sensitivity Analysis** - Parameter importance and risk factor identification
+3. **Flexible Design** - Real options analysis with expansion/abandonment strategies
+4. **Multi-Objective Analysis** - Pareto frontier across LCOE, NPV, environmental impact, and risk
+5. **Sensitivity Analysis** - Parameter importance and risk factor identification
+6. **Visualization** - Interactive plots and deployment rollout planning
 
-### Advanced Uncertainty Analysis
+### Uncertainty Analysis
 - **Monte Carlo Simulation** - Traditional random sampling for uncertainty quantification
-- **Latin Hypercube Sampling** - Improved space coverage with faster convergence
-- **Sampling Method Comparison** - Built-in tools to compare convergence and accuracy
-- **Robust Optimization** - Find designs that perform well across uncertainty scenarios
+- **Latin Hypercube Sampling** - Stratified sampling with faster convergence
+- **Sampling Method Comparison** - Built-in convergence comparison tools
+- **Robust Optimization** - Designs that perform well across uncertainty scenarios
 
 ### Technology Support
 - **Wind Energy** - Offshore wind turbines with variable capacity factors
-- **Solar Energy** - Floating solar PV systems
-- **Wave Energy** - Wave energy converters for high-energy sites
+- **Solar Energy** - Floating and land-mounted solar PV
+- **Wave Energy** - Wave energy converters for high-energy open-ocean sites
+- **Tidal Energy** - Tidal stream turbines (cross-flow helical, e.g. ORPC TidGen)
 
 ### Data Integration
 - **NASA API** - Climate data and weather patterns
@@ -30,8 +31,7 @@ An expansion from v1 - FlexiMORP v2 is a comprehensive Python platform for optim
 - **OpenWeather API** - Real-time weather and forecasting
 - **Intelligent Caching** - Multi-level caching system for performance
 
-
-## 🔧 Installation and Setup
+## Installation and Setup
 
 ### Prerequisites
 - Python 3.8+
@@ -40,7 +40,7 @@ An expansion from v1 - FlexiMORP v2 is a comprehensive Python platform for optim
 ### Quick Start
 ```bash
 # Clone repository
-git clone https://github.com/your-org/fleximorpv2.git
+git clone https://github.com/nishasdk/fleximorpv2.git
 cd fleximorpv2
 
 # Install dependencies
@@ -51,41 +51,39 @@ python -m pytest tests/ -v
 
 # Run web application
 streamlit run webapp/app.py
-
-# Or run example analysis
-python example_integration.py
 ```
 
 ### API Configuration (Optional)
-The system includes demo data, but for live analysis obtain free API keys:
+The system includes synthetic demo data, but for live resource assessment obtain free API keys:
 
 - **NREL**: [developer.nrel.gov](https://developer.nrel.gov)
-- **NASA**: [api.nasa.gov](https://api.nasa.gov)  
+- **NASA**: [api.nasa.gov](https://api.nasa.gov)
 - **OpenWeather**: [openweathermap.org](https://openweathermap.org/api)
 - **Copernicus**: [climate.copernicus.eu](https://climate.copernicus.eu)
 
-## 🌍 Case Studies
+## Case Studies
 
-### Alaska Remote Community
-- **Focus**: Energy independence for remote Arctic community
-- **Challenges**: Extreme weather, sea ice, indigenous consultation
-- **Technologies**: Wind + Solar (wave excluded due to ice)
-- **Key Constraints**: Environmental sensitivity, community ownership
+### Alaska — Igiugig Remote Community
+- **Focus**: Energy independence for a remote Yup'ik community on the Kvichak River
+- **Challenges**: Extreme weather, sea ice, riverine siting, indigenous consultation
+- **Technologies**: Wind + Solar + Tidal/Hydro (river flow turbines)
+- **Key Constraints**: Salmon spawning grounds, traditional fishing areas, community ownership
 - **Analysis**: TRIO optimization with MCDA (LCOE, emissions, social acceptance, aquaculture synergy)
 
-### Blyth Offshore Wind Farm
-- **Focus**: Large-scale commercial offshore development  
+### Blyth — Offshore Wind Farm
+- **Focus**: Large-scale commercial offshore development in the North Sea
 - **Challenges**: Grid integration, marine ecology, fishing conflicts
 - **Technologies**: Wind + Solar + Wave hybrid system
 - **Key Constraints**: Commercial fishing areas, shipping lanes
 
-### Eastport Fishing-Constrained
-- **Focus**: Development with significant stakeholder conflicts
-- **Challenges**: Fishing industry opposition, seasonal restrictions
-- **Technologies**: Wind + Solar + Wave with flexible deployment
-- **Key Constraints**: Critical fishing areas, lobster migration
+### Eastport, Maine — Tidal-Constrained Site
+- **Focus**: Development alongside active lobster fishing industry
+- **Challenges**: Fishing industry co-existence, seasonal restrictions, permitting
+- **Technologies**: Wind + Solar + Tidal (ORPC TidGen, Western Passage)
+- **Key Constraints**: Lobster grounds, Passamaquoddy tribal interests, ferry routes
+- **Reference**: [ORPC Western Passage project](https://orpc.co) — first grid-connected tidal installation in North America
 
-## 🚀 Usage Examples
+## Usage Examples
 
 ### Web Interface
 ```bash
@@ -96,78 +94,52 @@ streamlit run webapp/app.py
 ### Programmatic Analysis
 ```python
 from fleximorpv2 import BaselineOptimization, UncertaintyAnalysis
-from fleximorpv2.config import load_site_config
+from fleximorpv2.config import load_config
 
 # Load site configuration
-config = load_site_config("blyth")
+config = load_config("blyth")
 
 # Step 1: Baseline optimization
 baseline = BaselineOptimization(config)
 baseline_results = baseline.optimize(
-    target_type="capacity", 
-    target_value=100  # 100 MW target
+    target_type="production",
+    target_value=876000  # kWh target
 )
 
-# Step 2: Uncertainty analysis with sampling method choice
+# Step 2: Uncertainty analysis
 uncertainty = UncertaintyAnalysis(config)
 
-# Use Monte Carlo sampling
 mc_results = uncertainty.analyze_uncertainty(
     baseline_design=baseline_results.optimal_design,
     sampling_method='monte_carlo',
-    reoptimize=True
+    reoptimize=False
 )
 
-# Use Latin Hypercube sampling
 lhs_results = uncertainty.analyze_uncertainty(
     baseline_design=baseline_results.optimal_design,
     sampling_method='latin_hypercube',
-    reoptimize=True
+    reoptimize=False
 )
 
 # Compare sampling methods
 comparison = uncertainty.compare_sampling_methods(
     baseline_design=baseline_results.optimal_design,
-    n_runs=1000
+    n_runs=500
 )
 
-# Display results
 print(f"Baseline LCOE: £{baseline_results.financial_metrics['lcoe']:.2f}/MWh")
 print(f"Monte Carlo LCOE: £{mc_results.mean_performance['lcoe']:.2f}/MWh")
 print(f"Latin Hypercube LCOE: £{lhs_results.mean_performance['lcoe']:.2f}/MWh")
 print(f"Convergence: {comparison['convergence_analysis']['recommendation']}")
 ```
 
-### Complete 4-Step Workflow
-```python
-from fleximorpv2 import run_complete_analysis
-
-# Run all 4 steps for a site
-results = run_complete_analysis(
-    site="alaska",
-    target_type="capacity",
-    target_value=100,
-    sampling_method="latin_hypercube",  # Choose sampling method
-    save_results=True
-)
-
-# Access results from each step
-baseline = results['baseline']
-uncertainty = results['uncertainty'] 
-flexibility = results['flexibility']
-sensitivity = results['sensitivity']
+### Alaska Notebook
+```bash
+# Interactive Jupyter notebook
+jupyter notebook notebooks/alaska_analysis.ipynb
 ```
 
-### TRIO-MCDA Analysis (Alaska Case Study)
-```python
-# Run comprehensive TRIO-MCDA analysis
-exec(open('notebooks/alaska_complete_analysis.py').read())
-
-# Or use Jupyter notebook for interactive analysis
-# jupyter notebook notebooks/alaska_trio_mcda_analysis.ipynb
-```
-
-## 📊 Analysis Outputs
+## Analysis Outputs
 
 ### Step 1: Baseline Results
 - Optimal technology mix and capacities
@@ -175,149 +147,98 @@ exec(open('notebooks/alaska_complete_analysis.py').read())
 - Technical performance (capacity factors, energy yield)
 - Platform design parameters (size, depth, distance to shore)
 
-### Step 2: Uncertainty Results  
-- **Monte Carlo**: Traditional random sampling results
-- **Latin Hypercube**: Improved sampling with better convergence
-- Risk metrics (VaR, CVaR, probability distributions)
+### Step 2: Uncertainty Results
+- Monte Carlo and Latin Hypercube sampling results
+- Risk metrics (VaR, CVaR, probability of loss)
 - Robust optimal design under uncertainty
-- Parameter correlation analysis
-- Sampling method comparison and convergence analysis
+- Sampling method convergence comparison
 
 ### Step 3: Flexibility Results
 - Real options valuation (expansion, abandonment, switching)
-- Optimal staging strategy and timing
+- Optimal staging strategy and deployment timeline
 - Value of flexibility quantification
-- Decision trees and trigger strategies
+- Decision triggers and exercise probabilities
 
-### Step 4: Sensitivity Results
+### Step 4: Multi-Objective Results
+- Pareto frontier across competing objectives
+- Trade-off analysis (LCOE vs NPV vs environmental impact)
+- Non-dominated solution set
+
+### Step 5: Sensitivity Results
 - Parameter importance ranking
 - Tornado diagrams and sensitivity indices
 - Critical parameter identification
 - Robustness assessment
 
-## 🔄 Analysis Workflow
+## Testing
 
-1. **Site Configuration** → Load case study or define custom site
-2. **Target Definition** → Set capacity, energy, or cost optimization target  
-3. **Baseline Optimization** → Find deterministic optimal design
-4. **Uncertainty Analysis** → Choose sampling method and assess performance under uncertainty
-5. **Flexibility Planning** → Value real options and staging strategies
-6. **Sensitivity Analysis** → Identify critical parameters and risks
-7. **Results Export** → Generate reports and visualizations
-
-## 🧪 Testing
-
-FlexiMORP v2 includes a comprehensive test suite to ensure reliability and correctness.
-
-### Running Tests
-
-#### All Tests
 ```bash
-# Run complete test suite
+# Full test suite
 python -m pytest tests/ -v
 
-# Run with coverage (if pytest-cov installed)
+# With coverage
 python -m pytest tests/ --cov=fleximorpv2 --cov-report=term-missing
 
-# Run using test runner script
-python tests/run_tests.py
-```
-
-#### Specific Test Categories
-```bash
-# Unit tests only
+# Specific categories
 python -m pytest tests/ -v -m unit
-
-# Integration tests only  
 python -m pytest tests/ -v -m integration
-
-# Slow tests (Monte Carlo simulations)
-python -m pytest tests/ -v -m slow
-
-# API tests (require network access)
-python -m pytest tests/ -v -m api
 ```
-
-### Test Structure
-
-- **`conftest.py`** - Pytest configuration, fixtures, and test utilities
-- **`test_baseline_optimization.py`** - Unit tests for optimization algorithms
-- **`test_uncertainty_analysis.py`** - Tests for Monte Carlo and Latin Hypercube sampling
-- **`test_integration.py`** - End-to-end workflow tests
-- **`test_mcda_analysis.py`** - TRIO optimization and MCDA functionality tests
-- **`run_tests.py`** - Test runner with multiple execution modes
 
 ### Test Coverage
-
-The test suite covers:
-- ✅ Core optimization algorithms and constraint handling
-- ✅ Uncertainty analysis with both sampling methods
+- ✅ Baseline optimization algorithms and constraint handling
+- ✅ Uncertainty analysis — Monte Carlo and Latin Hypercube sampling
 - ✅ MCDA analysis with entropy weighting and TOPSIS
 - ✅ Configuration loading and validation
-- ✅ API integration (with mocking)
-- ✅ Complete workflow integration
-- ✅ Results serialization and file I/O
-- ✅ Error handling and edge cases
+- ✅ Sensitivity analysis parameter rankings
+- ✅ Sampling method comparison
+- ⚠️ End-to-end workflow integration _(planned)_
+- ⚠️ API integration tests _(planned)_
 
-### Example Test Usage
-```bash
-# Quick verification after installation
-python test_sampling_methods.py
-
-# Full test suite with verbose output
-python -m pytest tests/ -v --tb=short
-
-# Test specific functionality
-python -m pytest tests/test_uncertainty_analysis.py::TestUncertaintyAnalysis::test_latin_hypercube_sampling -v
-```
-
-## 🎯 Sampling Method Comparison
-
-FlexiMORP v2 supports advanced sampling methods for uncertainty analysis:
+## Sampling Method Comparison
 
 ### Monte Carlo Sampling
-- **Traditional approach**: Random sampling from distributions
+- **Approach**: Random sampling from distributions
 - **Use case**: General uncertainty analysis, well-understood method
-- **Convergence**: O(1/√n) convergence rate
+- **Convergence**: O(1/√n)
 
-### Latin Hypercube Sampling  
-- **Advanced approach**: Stratified sampling ensuring better space coverage
-- **Use case**: When faster convergence is needed or sample budget is limited
-- **Convergence**: Often superior convergence with fewer samples
-
-### When to Use Each Method
-- **Monte Carlo**: Standard analysis, comparing with literature, simple implementation
-- **Latin Hypercube**: Limited computational budget, need faster convergence, high-dimensional problems
-- **Both**: Use comparison tool to determine which performs better for your specific case
+### Latin Hypercube Sampling
+- **Approach**: Stratified sampling ensuring better space coverage
+- **Use case**: Limited computational budget, faster convergence
+- **Convergence**: Often superior with fewer samples
 
 ```python
-# Test both methods and compare
 comparison = uncertainty_analyzer.compare_sampling_methods(
     baseline_design=design,
-    n_runs=500  # Compare with 500 samples each
+    n_runs=500
 )
 print(f"Recommendation: {comparison['convergence_analysis']['recommendation']}")
 ```
 
-## 🤝 Contributing
+## Roadmap
+
+- [ ] Blyth and Eastport Jupyter notebooks
+- [ ] End-to-end integration test suite
+- [ ] Live API integration (NREL, NASA, Copernicus)
+- [ ] Full NSGA-II multi-objective algorithm (currently random search + Pareto filter)
+- [ ] SALib-based Sobol sensitivity indices
+- [ ] Environmental assessment module (currently stub)
+- [ ] Results export to PDF/Excel
+
+## Contributing
 
 1. Fork the repository
 2. Create feature branch (`git checkout -b feature/new-feature`)
 3. Commit changes (`git commit -m 'Add new feature'`)
 4. **Run tests** (`python -m pytest tests/`)
-5. Push to branch (`git push origin feature/new-feature`)
-6. Open Pull Request
+5. Push to branch and open a Pull Request
 
-### Development Guidelines
-- Write tests for new functionality
-- Follow existing code style and patterns
-- Update documentation for new features
-- Ensure all tests pass before submitting PR
+## License
 
-## 📄 License
+MIT License — see [LICENSE](LICENSE) for details.
 
-MIT License - see [LICENSE](LICENSE) file for details.
+## Acknowledgments
 
+<<<<<<< HEAD
 ## 🙏 Acknowledgments
 
 - **NREL** - Renewable resource data and technology databases
@@ -422,3 +343,12 @@ fleximorpv2/
 ---
 
 **FlexiMORP v2** - Production-ready offshore renewable energy optimization platform with comprehensive uncertainty analysis, advanced sampling methods, real options valuation, and interactive web interface.
+=======
+- **NREL** — Renewable resource data and technology databases
+- **NASA** — Climate and weather data services
+- **Copernicus** — European environmental monitoring program
+- **OpenWeather** — Real-time weather data services
+- **ORPC** — Tidal energy reference project, Eastport ME
+- **Streamlit** — Interactive web application framework
+- **SciPy** — Scientific computing including Latin Hypercube sampling
+>>>>>>> c6f0d3c (Rewrite README to reflect actual codebase state)
