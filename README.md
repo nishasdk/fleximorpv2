@@ -190,7 +190,7 @@ python -m pytest tests/ -v -m integration
 - Configuration loading and validation
 - Sensitivity analysis parameter rankings
 - Sampling method comparison
-- End-to-end workflow integration _(planned)_
+- End-to-end workflow integration
 - API integration tests _(planned)_
 
 ## Sampling Method Comparison
@@ -218,7 +218,7 @@ print(f"Recommendation: {comparison['convergence_analysis']['recommendation']}")
 - [ ] Interactive map for site selection
 - [ ] Customisable technology variables in the web interface
 - [ ] Blyth and Eastport Jupyter notebooks
-- [ ] End-to-end integration test suite
+- [x] End-to-end integration test suite
 - [ ] Live API integration (NREL, NASA, Copernicus)
 - [ ] Full NSGA-II multi-objective algorithm (currently random search + Pareto filter)
 - [ ] SALib-based Sobol sensitivity indices
