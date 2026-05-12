@@ -2,7 +2,7 @@
 
 ## 🌊 Advanced Multi-Step Analysis for Offshore Renewable Systems
 
-FlexiMORP v2 is a comprehensive Python platform for optimizing offshore renewable energy systems through a structured 4-step analysis framework with real options analysis and uncertainty quantification.
+An expansion from v1 - FlexiMORP v2 is a comprehensive Python platform for optimizing offshore renewable energy systems through a structured 4-step analysis framework with real options analysis and uncertainty quantification.
 
 ## 🚀 Key Features
 
@@ -30,90 +30,6 @@ FlexiMORP v2 is a comprehensive Python platform for optimizing offshore renewabl
 - **OpenWeather API** - Real-time weather and forecasting
 - **Intelligent Caching** - Multi-level caching system for performance
 
-## 📁 Project Structure
-
-```
-fleximorpv2/
-├── fleximorpv2/                   # Core Python package
-│   ├── baseline_optimization.py   # Step 1: Deterministic optimization
-│   ├── uncertainty_analysis.py    # Step 2: Monte Carlo & Latin Hypercube sampling
-│   ├── flexible_design.py         # Step 3: Real options analysis
-│   ├── sensitivity_analysis.py    # Step 4: Parameter sensitivity
-│   ├── config.py                 # Configuration management
-│   ├── graphics.py               # Visualization utilities
-│   ├── api/                      # API integration layer
-│   │   ├── __init__.py
-│   │   ├── base_api.py          # Common API functionality
-│   │   ├── cache_manager.py     # Intelligent caching
-│   │   ├── nasa_api.py          # NASA climate data
-│   │   ├── nrel_api.py          # NREL resource data
-│   │   ├── copernicus_api.py    # Copernicus marine data
-│   │   └── openweather_api.py   # Real-time weather
-│   ├── models/                   # Core models
-│   │   ├── __init__.py
-│   │   ├── platform.py          # Platform design model
-│   │   ├── technologies.py      # Technology performance models
-│   │   └── economics.py         # Economic evaluation
-│   └── utils/                    # Utilities
-│       ├── __init__.py
-│       ├── data_loader.py       # API data integration
-│       ├── optimization.py      # Optimization algorithms
-│       ├── financial.py         # Financial calculations
-│       ├── environmental.py     # Environmental assessment
-│       ├── decision_trees.py    # Real options modeling
-│       └── visualization.py     # Advanced plotting
-├── data/                         # Case study data
-│   ├── alaska/                  # Alaska remote community case
-│   │   ├── config.yaml          # Site configuration
-│   │   ├── inputs/              # Input data and constraints
-│   │   │   ├── environmental_constraints.py
-│   │   │   ├── stakeholder_preferences.py
-│   │   │   └── weather_data.csv
-│   │   └── results/             # Analysis results
-│   │       ├── baseline/        # Baseline optimization results
-│   │       ├── uncertainty/     # Uncertainty analysis results
-│   │       ├── flexible/        # Flexible design results
-│   │       └── sensitivity/     # Sensitivity analysis results
-│   ├── blyth/                   # Blyth offshore wind case
-│   │   ├── config.yaml
-│   │   ├── inputs/
-│   │   └── results/
-│   │       ├── baseline/
-│   │       ├── uncertainty/
-│   │       ├── flexible/
-│   │       └── sensitivity/
-│   └── eastport/                # Eastport fishing-constrained case
-│       ├── config.yaml
-│       ├── inputs/
-│       └── results/
-├── notebooks/                    # Jupyter analysis notebooks
-│   ├── alaska_trio_mcda_analysis.ipynb     # Alaska TRIO-MCDA analysis
-│   ├── alaska_complete_analysis.py         # Complete Alaska analysis script
-│   ├── blyth_analysis.ipynb               # Blyth case study (planned)
-│   └── eastport_analysis.ipynb            # Eastport case study (planned)
-├── webapp/                       # Streamlit web application
-│   ├── app.py                   # Main web interface
-│   ├── components/              # UI components
-│   ├── pages/                   # Multi-page interface
-│   └── assets/                  # Static assets
-├── tests/                        # Comprehensive test suite
-│   ├── conftest.py              # Pytest configuration and fixtures
-│   ├── run_tests.py             # Test runner script
-│   ├── test_baseline_optimization.py      # Baseline optimization tests
-│   ├── test_uncertainty_analysis.py       # Uncertainty analysis tests
-│   ├── test_integration.py                # End-to-end workflow tests
-│   └── test_mcda_analysis.py              # TRIO-MCDA functionality tests
-├── cache/                        # API response caching
-│   ├── nasa/                    # NASA data cache
-│   ├── nrel/                    # NREL data cache
-│   ├── copernicus/              # Copernicus cache
-│   └── openweather/             # OpenWeather cache
-├── docs/                         # Documentation
-├── requirements.txt              # Python dependencies
-├── example_integration.py        # Example usage script
-├── test_sampling_methods.py      # Sampling method comparison test
-└── README.md                    # This file
-```
 
 ## 🔧 Installation and Setup
 
@@ -417,7 +333,91 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - **Issues**: GitHub Issues tracker
 - **Tests**: Run `python -m pytest tests/` to verify functionality
 - **Examples**: See `notebooks/` and `example_integration.py`
-- **Email**: support@fleximorp.org
+
+## 📁 Project Structure
+
+```
+fleximorpv2/
+├── fleximorpv2/                   # Core Python package
+│   ├── baseline_optimization.py   # Step 1: Deterministic optimization
+│   ├── uncertainty_analysis.py    # Step 2: Monte Carlo & Latin Hypercube sampling
+│   ├── flexible_design.py         # Step 3: Real options analysis
+│   ├── sensitivity_analysis.py    # Step 4: Parameter sensitivity
+│   ├── config.py                 # Configuration management
+│   ├── graphics.py               # Visualization utilities
+│   ├── api/                      # API integration layer
+│   │   ├── __init__.py
+│   │   ├── base_api.py          # Common API functionality
+│   │   ├── cache_manager.py     # Intelligent caching
+│   │   ├── nasa_api.py          # NASA climate data
+│   │   ├── nrel_api.py          # NREL resource data
+│   │   ├── copernicus_api.py    # Copernicus marine data
+│   │   └── openweather_api.py   # Real-time weather
+│   ├── models/                   # Core models
+│   │   ├── __init__.py
+│   │   ├── platform.py          # Platform design model
+│   │   ├── technologies.py      # Technology performance models
+│   │   └── economics.py         # Economic evaluation
+│   └── utils/                    # Utilities
+│       ├── __init__.py
+│       ├── data_loader.py       # API data integration
+│       ├── optimization.py      # Optimization algorithms
+│       ├── financial.py         # Financial calculations
+│       ├── environmental.py     # Environmental assessment
+│       ├── decision_trees.py    # Real options modeling
+│       └── visualization.py     # Advanced plotting
+├── data/                         # Case study data
+│   ├── alaska/                  # Alaska remote community case
+│   │   ├── config.yaml          # Site configuration
+│   │   ├── inputs/              # Input data and constraints
+│   │   │   ├── environmental_constraints.py
+│   │   │   ├── stakeholder_preferences.py
+│   │   │   └── weather_data.csv
+│   │   └── results/             # Analysis results
+│   │       ├── baseline/        # Baseline optimization results
+│   │       ├── uncertainty/     # Uncertainty analysis results
+│   │       ├── flexible/        # Flexible design results
+│   │       └── sensitivity/     # Sensitivity analysis results
+│   ├── blyth/                   # Blyth offshore wind case
+│   │   ├── config.yaml
+│   │   ├── inputs/
+│   │   └── results/
+│   │       ├── baseline/
+│   │       ├── uncertainty/
+│   │       ├── flexible/
+│   │       └── sensitivity/
+│   └── eastport/                # Eastport fishing-constrained case
+│       ├── config.yaml
+│       ├── inputs/
+│       └── results/
+├── notebooks/                    # Jupyter analysis notebooks
+│   ├── alaska_trio_mcda_analysis.ipynb     # Alaska TRIO-MCDA analysis
+│   ├── alaska_complete_analysis.py         # Complete Alaska analysis script
+│   ├── blyth_analysis.ipynb               # Blyth case study (planned)
+│   └── eastport_analysis.ipynb            # Eastport case study (planned)
+├── webapp/                       # Streamlit web application
+│   ├── app.py                   # Main web interface
+│   ├── components/              # UI components
+│   ├── pages/                   # Multi-page interface
+│   └── assets/                  # Static assets
+├── tests/                        # Comprehensive test suite
+│   ├── conftest.py              # Pytest configuration and fixtures
+│   ├── run_tests.py             # Test runner script
+│   ├── test_baseline_optimization.py      # Baseline optimization tests
+│   ├── test_uncertainty_analysis.py       # Uncertainty analysis tests
+│   ├── test_integration.py                # End-to-end workflow tests
+│   └── test_mcda_analysis.py              # TRIO-MCDA functionality tests
+├── cache/                        # API response caching
+│   ├── nasa/                    # NASA data cache
+│   ├── nrel/                    # NREL data cache
+│   ├── copernicus/              # Copernicus cache
+│   └── openweather/             # OpenWeather cache
+├── docs/                         # Documentation
+├── requirements.txt              # Python dependencies
+├── example_integration.py        # Example usage script
+├── test_sampling_methods.py      # Sampling method comparison test
+└── README.md                    # This file
+```
 
 ---
 
