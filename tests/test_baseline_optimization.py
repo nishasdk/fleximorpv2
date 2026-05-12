@@ -85,6 +85,9 @@ class TestBaselineOptimization:
         
         assert len(x0) > 0
         assert all(x >= 0 for x in x0)
+        capacity_count = len(self.config.get_enabled_technologies())
+        max_capacity = self.config.optimization["constraints"]["max_total_capacity"]
+        assert sum(x0[:capacity_count]) <= max_capacity
     
     def test_invalid_target_type(self):
         """Test handling of invalid target type."""
