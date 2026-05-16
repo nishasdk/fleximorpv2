@@ -2,3 +2,20 @@
 .vscode/
 .claude/
 .worktrees/
+
+# Python caches and bytecode
+__pycache__/
+*.py[cod]
+
+# Local virtual environments
+.venv/
+venv/
+
+# Test and tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local coverage artifacts
+.coverage
+htmlcov/

@@ -19,6 +19,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 import yaml
+from streamlit_plotly_events import plotly_events
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
@@ -353,6 +354,24 @@ def render_sidebar(profiles: dict[str, SiteProfile]) -> None:
         site_options = list(profiles.keys())
         selected_site = st.session_state.site_key
         st.subheader("Study Setup")
+        st.caption("Select a site on the map or use the quick buttons.")
+        map_points = build_site_selector_points(profiles)
+        map_figure = site_selector_map(map_points, selected_site)
+        clicked = plotly_events(
+            map_figure,
+            click_event=True,
+            select_event=False,
+            hover_event=False,
+            key="sidebar_site_map",
+        )
+        if clicked:
+            point_index = clicked[0].get("pointIndex")
+            if isinstance(point_index, int):
+                clicked_site_key = map_points.iloc[point_index]["key"]
+                if clicked_site_key != selected_site:
+                    select_site(clicked_site_key)
+                    st.rerun()
+
         for site_key in site_options:
             is_selected = site_key == selected_site
             st.button(
@@ -629,6 +648,58 @@ def site_map(profile: SiteProfile) -> go.Figure:
         autosize=True,
         height=360,
         margin={"l": 0, "r": 0, "t": 10, "b": 0},
+    )
+    return fig
+
+
+def build_site_selector_points(profiles: dict[str, SiteProfile]) -> pd.DataFrame:
+    rows = []
+    for site_key, profile in profiles.items():
+        lat, lon = profile.coordinates
+        rows.append(
+            {
+                "key": site_key,
+                "label": profile.label,
+                "lat": lat,
+                "lon": lon,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def site_selector_map(points: pd.DataFrame, selected_site: str) -> go.Figure:
+    marker_sizes = [18 if key == selected_site else 11 for key in points["key"]]
+    marker_colors = [
+        "#1d4ed8" if key == selected_site else "#0f766e" for key in points["key"]
+    ]
+    marker_lines = [2 if key == selected_site else 1 for key in points["key"]]
+    fig = go.Figure(
+        go.Scattergeo(
+            lat=points["lat"],
+            lon=points["lon"],
+            text=points["label"],
+            customdata=points["key"],
+            mode="markers+text",
+            textposition="top center",
+            hovertemplate="%{text}<extra></extra>",
+            marker={
+                "size": marker_sizes,
+                "color": marker_colors,
+                "line": {"width": marker_lines, "color": "#ffffff"},
+            },
+        )
+    )
+    fig.update_geos(
+        projection_type="natural earth",
+        showcountries=True,
+        showland=True,
+        landcolor="#e7edf4",
+        showocean=True,
+        oceancolor="#d7eef8",
+    )
+    fig.update_layout(
+        height=260,
+        margin={"l": 0, "r": 0, "t": 0, "b": 0},
     )
     return fig
 
