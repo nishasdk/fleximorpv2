@@ -10,6 +10,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from html import escape
+import math
 from pathlib import Path
 from typing import Any
 
@@ -17,9 +18,9 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
 import streamlit as st
 import yaml
-from streamlit_plotly_events import plotly_events
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
@@ -354,24 +355,6 @@ def render_sidebar(profiles: dict[str, SiteProfile]) -> None:
         site_options = list(profiles.keys())
         selected_site = st.session_state.site_key
         st.subheader("Study Setup")
-        st.caption("Select a site on the map or use the quick buttons.")
-        map_points = build_site_selector_points(profiles)
-        map_figure = site_selector_map(map_points, selected_site)
-        clicked = plotly_events(
-            map_figure,
-            click_event=True,
-            select_event=False,
-            hover_event=False,
-            key="sidebar_site_map",
-        )
-        if clicked:
-            point_index = clicked[0].get("pointIndex")
-            if isinstance(point_index, int):
-                clicked_site_key = map_points.iloc[point_index]["key"]
-                if clicked_site_key != selected_site:
-                    select_site(clicked_site_key)
-                    st.rerun()
-
         for site_key in site_options:
             is_selected = site_key == selected_site
             st.button(
@@ -397,6 +380,39 @@ def render_sidebar(profiles: dict[str, SiteProfile]) -> None:
                         profile.distance_to_shore
                     )
                     clear_results()
+
+                location_query = st.text_input(
+                    "Search coastal/ocean area",
+                    placeholder="e.g. Moray Firth, Scotland",
+                    key="custom_location_query",
+                )
+                st.caption(
+                    "Beta: search and coastal validation are approximate and need refinement."
+                )
+                if st.button(
+                    "Find coordinates",
+                    key="resolve_custom_location",
+                    use_container_width=True,
+                ):
+                    if not location_query.strip():
+                        st.warning("Enter a location to search.")
+                    else:
+                        resolved = resolve_custom_location(location_query.strip())
+                        if not resolved["ok"]:
+                            st.error(str(resolved["message"]))
+                        elif not resolved["is_ocean_coastal"]:
+                            st.warning(str(resolved["message"]))
+                            st.caption(
+                                "Pick a point in the sea near the coast (not inland)."
+                            )
+                        else:
+                            st.session_state.custom_latitude = resolved["latitude"]
+                            st.session_state.custom_longitude = resolved["longitude"]
+                            st.success(
+                                f"Set to {resolved['label']} "
+                                f"({resolved['latitude']:.4f}, {resolved['longitude']:.4f})"
+                            )
+                            clear_results()
 
                 latitude = st.number_input(
                     "Latitude",
@@ -570,6 +586,132 @@ def render_header() -> None:
     )
 
 
+def resolve_custom_location(query: str) -> dict[str, Any]:
+    # TODO: Improve geocoding/coastal validation reliability (offline fallback,
+    # stricter sea-vs-land classification, and clearer candidate selection).
+    search_url = "https://nominatim.openstreetmap.org/search"
+    try:
+        response = requests.get(
+            search_url,
+            params={"q": query, "format": "jsonv2", "limit": 5},
+            headers={"User-Agent": "fleximorpv2/1.0"},
+            timeout=7,
+        )
+        response.raise_for_status()
+        results = response.json()
+    except requests.RequestException:
+        return {
+            "ok": False,
+            "message": "Location search unavailable right now. Try manual coordinates.",
+        }
+
+    if not isinstance(results, list) or not results:
+        return {"ok": False, "message": "No matching location found."}
+
+    candidates = []
+    for result in results:
+        try:
+            lat = float(result.get("lat"))
+            lon = float(result.get("lon"))
+        except (TypeError, ValueError):
+            continue
+        label = str(result.get("display_name", "Selected location"))
+        suitability = ocean_coastal_suitability(lat, lon, label)
+        candidates.append((suitability["score"], lat, lon, label, suitability))
+
+    if not candidates:
+        return {"ok": False, "message": "Could not parse location coordinates."}
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    _, lat, lon, label, suitability = candidates[0]
+
+    return {
+        "ok": True,
+        "latitude": lat,
+        "longitude": lon,
+        "label": label,
+        "is_ocean_coastal": suitability["is_ocean_coastal"],
+        "message": suitability["message"],
+    }
+
+
+def ocean_coastal_suitability(lat: float, lon: float, label: str) -> dict[str, Any]:
+    text = label.lower()
+    marine_words = ("sea", "ocean", "gulf", "bay", "channel", "strait", "coast")
+    inland_words = ("county", "district", "village", "city", "town", "province")
+    marine_hint = any(word in text for word in marine_words)
+    inland_hint = any(word in text for word in inland_words)
+
+    coastline_nearby = has_nearby_coastline(lat, lon)
+    score = 0
+    if marine_hint:
+        score += 2
+    if coastline_nearby:
+        score += 2
+    if inland_hint:
+        score -= 1
+
+    if marine_hint and coastline_nearby:
+        return {
+            "score": score,
+            "is_ocean_coastal": True,
+            "message": "Location is offshore/coastal and suitable.",
+        }
+    if coastline_nearby and not marine_hint:
+        return {
+            "score": score,
+            "is_ocean_coastal": False,
+            "message": "Location is near coast but may be on land. Move point offshore.",
+        }
+    return {
+        "score": score,
+        "is_ocean_coastal": False,
+        "message": "Location does not look coastal/oceanic.",
+    }
+
+
+def has_nearby_coastline(lat: float, lon: float) -> bool:
+    # Fast fallback based on known case-study geography if network is unavailable.
+    case_sites = [(59.32, -155.90), (55.13, 1.48), (44.90, -66.98)]
+    for site_lat, site_lon in case_sites:
+        if haversine_km(lat, lon, site_lat, site_lon) <= 250:
+            return True
+
+    overpass_url = "https://overpass-api.de/api/interpreter"
+    query = (
+        "[out:json][timeout:10];"
+        f'way["natural"="coastline"](around:30000,{lat},{lon});'
+        "out ids;"
+    )
+    try:
+        response = requests.get(
+            overpass_url,
+            params={"data": query},
+            headers={"User-Agent": "fleximorpv2/1.0"},
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException:
+        return False
+
+    elements = payload.get("elements", []) if isinstance(payload, dict) else []
+    return len(elements) > 0
+
+
+def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    radius_km = 6371.0
+    d_lat = math.radians(lat2 - lat1)
+    d_lon = math.radians(lon2 - lon1)
+    a = (
+        math.sin(d_lat / 2) ** 2
+        + math.cos(math.radians(lat1))
+        * math.cos(math.radians(lat2))
+        * math.sin(d_lon / 2) ** 2
+    )
+    return 2 * radius_km * math.asin(math.sqrt(a))
+
+
 def render_workspace(profile: SiteProfile) -> None:
     left, right = st.columns([1.35, 1], gap="large")
     with left:
@@ -648,58 +790,6 @@ def site_map(profile: SiteProfile) -> go.Figure:
         autosize=True,
         height=360,
         margin={"l": 0, "r": 0, "t": 10, "b": 0},
-    )
-    return fig
-
-
-def build_site_selector_points(profiles: dict[str, SiteProfile]) -> pd.DataFrame:
-    rows = []
-    for site_key, profile in profiles.items():
-        lat, lon = profile.coordinates
-        rows.append(
-            {
-                "key": site_key,
-                "label": profile.label,
-                "lat": lat,
-                "lon": lon,
-            }
-        )
-    return pd.DataFrame(rows)
-
-
-def site_selector_map(points: pd.DataFrame, selected_site: str) -> go.Figure:
-    marker_sizes = [18 if key == selected_site else 11 for key in points["key"]]
-    marker_colors = [
-        "#1d4ed8" if key == selected_site else "#0f766e" for key in points["key"]
-    ]
-    marker_lines = [2 if key == selected_site else 1 for key in points["key"]]
-    fig = go.Figure(
-        go.Scattergeo(
-            lat=points["lat"],
-            lon=points["lon"],
-            text=points["label"],
-            customdata=points["key"],
-            mode="markers+text",
-            textposition="top center",
-            hovertemplate="%{text}<extra></extra>",
-            marker={
-                "size": marker_sizes,
-                "color": marker_colors,
-                "line": {"width": marker_lines, "color": "#ffffff"},
-            },
-        )
-    )
-    fig.update_geos(
-        projection_type="natural earth",
-        showcountries=True,
-        showland=True,
-        landcolor="#e7edf4",
-        showocean=True,
-        oceancolor="#d7eef8",
-    )
-    fig.update_layout(
-        height=260,
-        margin={"l": 0, "r": 0, "t": 0, "b": 0},
     )
     return fig
 
