@@ -2,3 +2,13 @@
 .vscode/
 .claude/
 .worktrees/
+
+# Local environment and tooling
+.env
+.venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+
+# API response cache
+cache/
