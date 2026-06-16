@@ -2,6 +2,7 @@
 .vscode/
 .claude/
 .worktrees/
+.cursor/
 
 # Local environment and tooling
 .env
@@ -9,6 +10,20 @@
 .pytest_cache/
 __pycache__/
 *.py[cod]
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
 
-# API response cache
+# Jupyter
+.ipynb_checkpoints/
+*.nbconvert.ipynb
+
+# API response cache and notebook artefacts (keep directory placeholders)
 cache/
+notebooks/**/outputs/*
+!notebooks/**/outputs/.gitkeep
+
+# Editor / OS noise
+*.swp
+*~
+.idea/
