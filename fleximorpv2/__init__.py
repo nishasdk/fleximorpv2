@@ -25,7 +25,6 @@ from .models.economics import EconomicModel
 
 # Import utility classes
 from .utils.data_loader import APIDataLoader
-from .utils.optimization import OptimizationUtils
 from .utils.financial import FinancialCalculator
 from .utils.visualization import VisualizationUtils
 
@@ -49,7 +48,6 @@ __all__ = [
     
     # Utilities
     "APIDataLoader",
-    "OptimizationUtils",
     "FinancialCalculator",
     "VisualizationUtils"
 ]

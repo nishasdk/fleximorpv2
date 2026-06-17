@@ -19,7 +19,6 @@ from .models.platform import PlatformModel
 from .models.technologies import TechnologyModel
 from .models.economics import EconomicModel
 from .utils.data_loader import APIDataLoader
-from .utils.optimization import OptimizationUtils
 from .utils.financial import FinancialCalculator
 
 
