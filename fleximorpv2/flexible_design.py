@@ -141,7 +141,9 @@ class FlexibleResults:
             first_expansion = expansion_options[0]
             triggers.update({
                 'electricity_price_threshold': first_expansion.trigger_conditions.get('min_electricity_price', 0.11) * 1000,  # Convert to £/MWh
-                'capacity_utilization': first_expansion.trigger_conditions.get('min_capacity_factor', 0.35)
+                'capacity_utilization': first_expansion.trigger_conditions.get(
+                    'min_capacity_factor', triggers['capacity_utilization']
+                )
             })
         
         return triggers
@@ -203,14 +205,43 @@ class FlexibleDesign:
     def _setup_flexibility_parameters(self):
         """Setup flexibility parameters from configuration."""
         flexibility_config = self.config.flexibility
-        
+
         self.decision_points = flexibility_config.get('decision_points', [2, 5, 10])
         self.expansion_options = flexibility_config.get('expansion_options', [25, 50, 100])
         self.abandonment_option = flexibility_config.get('abandonment_option', True)
         self.technology_switching = flexibility_config.get('technology_switching', True)
-        
+
+        # Site-derived default capacity factor, used wherever an "expected"
+        # capacity factor is needed but no design/uncertainty result is available yet.
+        self.default_capacity_factor = self._estimate_capacity_factor({})
+        self.expansion_min_capacity_factor = flexibility_config.get(
+            'expansion_min_capacity_factor', self.default_capacity_factor
+        )
+
         # Define flexibility options
         self._define_flexibility_options()
+
+    def _estimate_capacity_factor(self, design: Dict[str, Any]) -> float:
+        """
+        Estimate a capacity-weighted average capacity factor from per-technology
+        configured capacity factors and a design's installed capacities.
+
+        Falls back to an unweighted average of the enabled technologies'
+        configured capacity factors when the design has no capacity information
+        (e.g. at initialization, before any design exists).
+        """
+        enabled_techs = self.config.get_enabled_technologies()
+        tech_capacity_factors = [self.config.technologies[t].capacity_factor for t in enabled_techs]
+
+        total_capacity = sum(design.get(f'{t}_capacity', 0.0) for t in enabled_techs)
+        if total_capacity > 0:
+            weighted_cf = sum(
+                design.get(f'{t}_capacity', 0.0) * self.config.technologies[t].capacity_factor
+                for t in enabled_techs
+            )
+            return weighted_cf / total_capacity
+
+        return sum(tech_capacity_factors) / len(tech_capacity_factors) if tech_capacity_factors else 0.0
     
     def _define_flexibility_options(self):
         """Define available flexibility options."""
@@ -223,7 +254,7 @@ class FlexibleDesign:
                     option_type='expansion',
                     trigger_conditions={
                         'min_electricity_price': 0.11,  # £/kWh
-                        'min_capacity_factor': 0.35,
+                        'min_capacity_factor': self.expansion_min_capacity_factor,
                         'max_payback_period': 10
                     },
                     action_parameters={
@@ -480,7 +511,9 @@ class FlexibleDesign:
         
         # Estimate underlying asset value (additional capacity NPV)
         mean_electricity_price = self.config.economic.get('electricity_price', 0.10)
-        mean_capacity_factor = uncertainty_results.mean_performance.get('capacity_factor', 0.35)
+        baseline_design = decision_tree.get('root', {}).get('design', {})
+        mean_capacity_factor = uncertainty_results.mean_performance.get('capacity_factor', 0.0) \
+            or self._estimate_capacity_factor(baseline_design)
         
         # Annual revenue from additional capacity
         annual_revenue = additional_capacity * 1000 * 8760 * mean_capacity_factor * mean_electricity_price
@@ -682,8 +715,15 @@ class FlexibleDesign:
         ) / max(1, len([o for o in self.flexibility_options if o.option_type == 'expansion']))
         
         expected_performance['expected_total_capacity'] += expected_expansion
-        expected_performance['expected_capacity_factor'] = 0.35  # Placeholder
-        
+
+        # Reuse the baseline design's capacity factor when available (it reflects
+        # the actual TechnologyModel/hourly-profile result), otherwise derive a
+        # capacity-weighted estimate from the flexible design's installed capacities.
+        baseline_design = decision_tree.get('root', {}).get('design', {})
+        expected_performance['expected_capacity_factor'] = baseline_design.get(
+            'capacity_factor'
+        ) or self._estimate_capacity_factor(flexible_design)
+
         return expected_performance
     
     def _run_scenario_analysis(self, flexible_design: Dict[str, Any]) -> List[Dict[str, Any]]:
