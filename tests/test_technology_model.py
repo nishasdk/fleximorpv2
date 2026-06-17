@@ -65,3 +65,22 @@ class TestHydroPerformance:
         )
         assert performance["hydro_capacity_factor"] >= 0.0
         assert performance["hydro_annual_energy"] >= 0.0
+
+    def test_hydro_profile_combines_with_non_8760_length_resource_data(self):
+        """Regression test: hydro's generation_profile was hardcoded to length
+        8760, which broke combination with other techs' profiles (sized from
+        the actual resource_data) whenever resource data wasn't exactly 8760
+        timesteps long (e.g. 8761, as produced by the synthetic data generator)."""
+        resource_data = ResourceData(
+            wind_speed=np.full(8761, 8.0),
+            solar_irradiance=np.full(8761, 200.0),
+            wave_height=np.full(8761, 1.5),
+            wave_period=np.full(8761, 6.0),
+            temperature=np.full(8761, 5.0),
+            timestamps=np.arange(8761),
+        )
+        performance = self.tech_model.calculate_performance(
+            {"wind_capacity": 0.5, "hydro_capacity": 0.5},
+            resource_data,
+        )
+        assert performance["capacity_factor"] >= 0.0

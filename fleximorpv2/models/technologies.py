@@ -522,7 +522,11 @@ class TechnologyModel:
         availability = 0.85  # Lower than solar/wind due to maintenance complexity
         capacity_factor = base_cf * seasonal_cf_modifier * availability
         annual_energy = capacity_factor * capacity * 8760
-        generation_profile = np.full(8760, annual_energy / 8760 if annual_energy > 0 else 0.0)
+        # Size the profile to match the actual resource data length (not a
+        # hardcoded 8760) so it can be combined with other technologies'
+        # generation profiles, which are sized from resource_data directly.
+        n_timesteps = len(resource_data.wind_speed)
+        generation_profile = np.full(n_timesteps, annual_energy / n_timesteps if annual_energy > 0 else 0.0)
         
         # Get technical parameters
         tech_params = hydro_config.technical_params
