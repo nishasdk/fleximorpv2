@@ -416,17 +416,17 @@ class TechnologyModel:
         # Check if user specified deployment type in design_vars
         if design_vars and 'solar_deployment_type' in design_vars:
             specified_type = design_vars['solar_deployment_type']
-            if specified_type in deployment_options and deployment_options[specified_type]['available']:
+            if specified_type in deployment_options and deployment_options[specified_type]['enabled']:
                 return specified_type, deployment_options[specified_type]
-        
+
         # Check if 'both' option is available and should be optimized
-        if 'both' in deployment_options and deployment_options['both']['available']:
+        if 'both' in deployment_options and deployment_options['both']['enabled']:
             # Implement automatic deployment type selection
             return self._optimize_solar_deployment_type(deployment_options)
-        
+
         # Default to first available deployment type
         for deploy_type, config in deployment_options.items():
-            if config.get('available', False) and deploy_type != 'both':
+            if config.get('enabled', False) and deploy_type != 'both':
                 return deploy_type, config
         
         # Fallback to land deployment
@@ -508,10 +508,10 @@ class TechnologyModel:
                                         hydro_config: Dict[str, Any]) -> TechnologyPerformance:
         """Calculate river flow turbine performance."""
         # Base capacity factor from config
-        base_cf = hydro_config.get('capacity_factor', 0.25)
-        
+        base_cf = hydro_config.capacity_factor or 0.25
+
         # Apply seasonal variation
-        seasonal_variation = hydro_config.get('seasonal_variation', False)
+        seasonal_variation = hydro_config.technical_params.get('seasonal_variation', False)
         if seasonal_variation:
             # Simplified seasonal flow modeling
             # Spring melt increases flow, winter decreases it
@@ -525,7 +525,7 @@ class TechnologyModel:
         generation_profile = np.full(8760, annual_energy / 8760 if annual_energy > 0 else 0.0)
         
         # Get technical parameters
-        tech_params = hydro_config.get('technical_params', {})
+        tech_params = hydro_config.technical_params
         area_per_mw = 100  # Small footprint for river turbines
         load_per_mw = 150  # Heavy underwater equipment
         
