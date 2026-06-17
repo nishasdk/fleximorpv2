@@ -21,6 +21,7 @@ class PlatformSpecs:
     distance_to_shore: float  # km
     platform_type: str = "semi_submersible"  # floating, fixed, semi_submersible
     max_load_capacity: float = 1000.0  # tonnes
+    required_load_capacity: float = 0.0  # tonnes
     design_life: int = 25  # years
 
 
@@ -105,14 +106,16 @@ class PlatformModel:
         
         # Calculate load capacity requirements
         required_load_capacity = self._calculate_load_requirements(technology_requirements)
-        
+        max_load_capacity = self._calculate_max_load_capacity(final_area, water_depth, platform_type)
+
         # Create platform specifications
         self.platform_specs = PlatformSpecs(
             area=final_area,
             water_depth=water_depth,
             distance_to_shore=distance_to_shore,
             platform_type=platform_type,
-            max_load_capacity=required_load_capacity,
+            max_load_capacity=max_load_capacity,
+            required_load_capacity=required_load_capacity,
             design_life=self.config.economic.get('project_lifetime', 25)
         )
         
@@ -151,6 +154,30 @@ class PlatformModel:
         
         # Add safety factor
         return total_load * 1.2
+
+    def _calculate_max_load_capacity(self, platform_area: float, water_depth: float, platform_type: str) -> float:
+        """Estimate platform load capacity from geometry and platform type."""
+        load_capacity_density = {
+            "fixed": 0.22,             # tonnes per m²
+            "semi_submersible": 0.18,   # tonnes per m²
+            "floating": 0.15            # tonnes per m²
+        }[platform_type]
+
+        # Deeper platforms are slightly harder to structurally reinforce.
+        depth_factor = max(0.7, 1.0 - (water_depth / 400.0))
+
+        return platform_area * load_capacity_density * depth_factor
+
+    def _calculate_load_utilization(self) -> float:
+        """Calculate how much of the platform's load capacity is used."""
+        if self.platform_specs is None:
+            raise ValueError("Platform must be designed before calculating load utilization")
+
+        max_load_capacity = self.platform_specs.max_load_capacity
+        if max_load_capacity <= 0:
+            return 0.0
+
+        return self.platform_specs.required_load_capacity / max_load_capacity
     
     def calculate_performance(self, design_vars: Dict[str, Any]) -> Dict[str, float]:
         """
@@ -166,6 +193,7 @@ class PlatformModel:
             raise ValueError("Platform must be designed before calculating performance")
         
         # Calculate individual performance metrics
+        load_utilization = self._calculate_load_utilization()
         structural_efficiency = self._calculate_structural_efficiency()
         installation_complexity = self._calculate_installation_complexity()
         maintenance_accessibility = self._calculate_maintenance_accessibility()
@@ -178,7 +206,7 @@ class PlatformModel:
             maintenance_accessibility=maintenance_accessibility,
             environmental_impact=environmental_impact,
             total_footprint=self.platform_specs.area,
-            load_utilization=0.8  # Placeholder
+            load_utilization=load_utilization
         )
         
         return {
@@ -187,17 +215,12 @@ class PlatformModel:
             'platform_maintenance_accessibility': maintenance_accessibility,
             'platform_environmental_impact': environmental_impact,
             'platform_footprint': self.platform_specs.area,
+            'platform_load_utilization': load_utilization,
             'platform_cost_factor': self._get_platform_cost_factor()
         }
     
     def _calculate_structural_efficiency(self) -> float:
         """Calculate structural efficiency metric (0-1)."""
-        if self.platform_specs is None:
-            raise ValueError("Platform must be designed before calculating structural efficiency")
-        if self.platform_specs is None:
-            raise ValueError("Platform must be designed before calculating structural efficiency")
-        if self.platform_specs is None:
-            raise ValueError("Platform must be designed before calculating structural efficiency")
         if self.platform_specs is None:
             raise ValueError("Platform must be designed before calculating structural efficiency")
         platform_type = self.platform_specs.platform_type
@@ -206,8 +229,8 @@ class PlatformModel:
         # Adjust based on water depth (deeper = more challenging)
         depth_factor = 1.0 - (self.platform_specs.water_depth / 200) * 0.1
         
-        # Adjust based on platform utilization
-        utilization = min(1.0, self.platform_specs.max_load_capacity / 1000)
+        # Adjust based on platform load utilization
+        utilization = min(1.0, self._calculate_load_utilization())
         utilization_factor = 0.8 + 0.2 * utilization
         
         return base_efficiency * depth_factor * utilization_factor
@@ -416,7 +439,8 @@ class PlatformModel:
                 "structural_efficiency": self.performance.structural_efficiency,
                 "installation_complexity": self.performance.installation_complexity,
                 "maintenance_accessibility": self.performance.maintenance_accessibility,
-                "environmental_impact": self.performance.environmental_impact
+                "environmental_impact": self.performance.environmental_impact,
+                "load_utilization": self.performance.load_utilization
             })
         
         return summary
