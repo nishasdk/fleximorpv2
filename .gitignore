@@ -2,6 +2,10 @@
 .vscode/
 .claude/
 .worktrees/
+
+# Local coverage artifacts
+.coverage
+htmlcov/
 .cursor/
 
 # Local environment and tooling
