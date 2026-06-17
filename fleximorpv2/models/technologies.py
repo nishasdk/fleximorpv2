@@ -24,6 +24,7 @@ class TechnologyPerformance:
     degradation_rate: float  # per year
     space_requirement: float  # m²/MW
     load_requirement: float  # tonnes/MW
+    generation_profile: Optional[np.ndarray] = None
 
 
 @dataclass
@@ -114,6 +115,7 @@ class TechnologyModel:
         total_annual_energy = 0.0
         total_space_requirement = 0.0
         total_load_requirement = 0.0
+        combined_generation_profile = None
         
         # Calculate performance for each enabled technology
         for tech_name in self.config.get_enabled_technologies():
@@ -130,6 +132,14 @@ class TechnologyModel:
                 total_annual_energy += performance.annual_energy
                 total_space_requirement += performance.space_requirement
                 total_load_requirement += performance.load_requirement
+
+                if performance.generation_profile is not None:
+                    if combined_generation_profile is None:
+                        combined_generation_profile = np.array(performance.generation_profile, dtype=float)
+                    else:
+                        combined_generation_profile = combined_generation_profile + np.array(
+                            performance.generation_profile, dtype=float
+                        )
                 
                 # Add technology-specific metrics
                 combined_metrics.update({
@@ -147,7 +157,8 @@ class TechnologyModel:
             'capacity_factor': combined_capacity_factor,
             'total_space_requirement': total_space_requirement,
             'total_load_requirement': total_load_requirement,
-            'technology_diversity': len(self.performance_data)
+            'technology_diversity': len(self.performance_data),
+            'generation_profile': combined_generation_profile
         })
         
         return combined_metrics
@@ -195,17 +206,12 @@ class TechnologyModel:
         # Apply wake losses
         power_outputs *= (1 - params['wake_loss'])
         
-        # Calculate capacity factor
-        average_power = np.mean(power_outputs)  # MW
-        capacity_factor = average_power / capacity if capacity > 0 else 0.0
-        
-        # Calculate annual energy
-        annual_energy = capacity_factor * capacity * 8760  # MWh/year
-        
-        # Apply availability factor
+        # Apply availability factor and convert hourly fraction to hourly energy
         technical_params = tech_config.technical_params if tech_config.technical_params is not None else {}
         availability = technical_params.get('availability', 0.95)
-        annual_energy *= availability
+        generation_profile = power_outputs * capacity * availability
+        annual_energy = float(np.sum(generation_profile))
+        capacity_factor = annual_energy / (capacity * 8760) if capacity > 0 else 0.0
         
         return TechnologyPerformance(
             capacity=capacity,
@@ -214,7 +220,8 @@ class TechnologyModel:
             availability=availability,
             degradation_rate=0.002,  # 0.2% per year for wind
             space_requirement=capacity * params['area_per_mw'],
-            load_requirement=capacity * params['load_per_mw']
+            load_requirement=capacity * params['load_per_mw'],
+            generation_profile=generation_profile
         )
     
     def _wind_power_curve(self, wind_speed: float, params: Dict[str, float]) -> float:
@@ -299,15 +306,10 @@ class TechnologyModel:
         # Clip to maximum capacity
         power_outputs = np.clip(power_outputs, 0, 1.0)
         
-        # Calculate capacity factor
-        capacity_factor = np.mean(power_outputs)
-        
-        # Calculate annual energy
-        annual_energy = capacity_factor * capacity * 8760  # MWh/year
-        
-        # Apply availability factor
         availability = tech_config.technical_params.get('availability', 0.98)
-        annual_energy *= availability
+        generation_profile = power_outputs * capacity * availability
+        annual_energy = float(np.sum(generation_profile))
+        capacity_factor = annual_energy / (capacity * 8760) if capacity > 0 else 0.0
         
         # Get space and load requirements based on deployment type
         area_per_mw = deployment_config.get('area_per_mw', params['area_per_mw'])
@@ -324,7 +326,8 @@ class TechnologyModel:
             availability=availability,
             degradation_rate=params['degradation_rate'],
             space_requirement=capacity * area_per_mw,
-            load_requirement=capacity * load_per_mw
+            load_requirement=capacity * load_per_mw,
+            generation_profile=generation_profile
         )
     
     def _calculate_wave_performance(self, 
@@ -355,15 +358,10 @@ class TechnologyModel:
         if max_power > 0:
             power_outputs = power_outputs / max_power
         
-        # Calculate capacity factor
-        capacity_factor = np.mean(power_outputs)
-        
-        # Calculate annual energy
-        annual_energy = capacity_factor * capacity * 8760  # MWh/year
-        
-        # Apply availability factor
         availability = params['availability_factor']
-        annual_energy *= availability
+        generation_profile = power_outputs * capacity * availability
+        annual_energy = float(np.sum(generation_profile))
+        capacity_factor = annual_energy / (capacity * 8760) if capacity > 0 else 0.0
         
         return TechnologyPerformance(
             capacity=capacity,
@@ -372,7 +370,8 @@ class TechnologyModel:
             availability=availability,
             degradation_rate=0.01,  # 1% per year for wave (higher due to harsh environment)
             space_requirement=capacity * params['area_per_mw'],
-            load_requirement=capacity * params['load_per_mw']
+            load_requirement=capacity * params['load_per_mw'],
+            generation_profile=generation_profile
         )
     
     def _calculate_wave_power_density(self, height: float, period: float) -> float:
@@ -520,12 +519,10 @@ class TechnologyModel:
         else:
             seasonal_cf_modifier = 1.0
         
-        capacity_factor = base_cf * seasonal_cf_modifier
-        annual_energy = capacity_factor * capacity * 8760
-        
-        # Apply availability
         availability = 0.85  # Lower than solar/wind due to maintenance complexity
-        annual_energy *= availability
+        capacity_factor = base_cf * seasonal_cf_modifier * availability
+        annual_energy = capacity_factor * capacity * 8760
+        generation_profile = np.full(8760, annual_energy / 8760 if annual_energy > 0 else 0.0)
         
         # Get technical parameters
         tech_params = hydro_config.get('technical_params', {})
@@ -539,7 +536,8 @@ class TechnologyModel:
             availability=availability,
             degradation_rate=0.015,  # Higher due to underwater environment
             space_requirement=capacity * area_per_mw,
-            load_requirement=capacity * load_per_mw
+            load_requirement=capacity * load_per_mw,
+            generation_profile=generation_profile
         )
     
     def _calculate_tidal_performance(self, 
@@ -558,13 +556,15 @@ class TechnologyModel:
                 availability=0.0,
                 degradation_rate=0.02,
                 space_requirement=capacity * 500,
-                load_requirement=capacity * 200
+                load_requirement=capacity * 200,
+                generation_profile=np.zeros(8760)
             )
         
         # Tidal-specific calculations would go here
         # For now, return basic performance
         capacity_factor = 0.35
         annual_energy = capacity_factor * capacity * 8760 * 0.90
+        generation_profile = np.full(8760, annual_energy / 8760 if annual_energy > 0 else 0.0)
         
         return TechnologyPerformance(
             capacity=capacity,
@@ -573,7 +573,8 @@ class TechnologyModel:
             availability=0.90,
             degradation_rate=0.02,
             space_requirement=capacity * 500,
-            load_requirement=capacity * 200
+            load_requirement=capacity * 200,
+            generation_profile=generation_profile
         )
     
     def get_technology_requirements(self, design_vars: Dict[str, Any]) -> Dict[str, Dict[str, float]]:

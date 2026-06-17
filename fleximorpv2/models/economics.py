@@ -38,6 +38,7 @@ class RevenueModel:
     capacity_payments: float
     total_annual_revenue: float
     electricity_price: float
+    annual_energy: float
     generation_profile: np.ndarray
 
 
@@ -224,11 +225,16 @@ class EconomicModel:
         """Calculate project revenues."""
         
         # Annual energy generation
-        annual_energy = tech_performance.get('annual_energy', 0.0)  # MWh/year
+        generation_profile = np.asarray(tech_performance.get('generation_profile', []), dtype=float)
+        if generation_profile.size > 0:
+            annual_energy = float(np.sum(generation_profile))  # MWh/year
+        else:
+            annual_energy = tech_performance.get('annual_energy', 0.0)  # MWh/year
+            generation_profile = np.full(8760, annual_energy / 8760 if annual_energy > 0 else 0.0)
         
         # Electricity revenue
         electricity_price = self.config.economic.get('electricity_price', 0.10)  # £/kWh
-        electricity_revenue = annual_energy * electricity_price * 1000  # Convert MWh to kWh
+        electricity_revenue = float(np.sum(generation_profile) * electricity_price * 1000)
         
         # Subsidy revenue (technology-specific)
         subsidy_revenue = self._calculate_subsidy_revenue(tech_performance)
@@ -247,7 +253,8 @@ class EconomicModel:
             capacity_payments=capacity_payments,
             total_annual_revenue=total_annual_revenue,
             electricity_price=electricity_price,
-            generation_profile=np.ones(8760)  # Placeholder hourly profile
+            annual_energy=annual_energy,
+            generation_profile=generation_profile
         )
         
         return {
@@ -435,7 +442,10 @@ class EconomicModel:
         
         for price in prices:
             # Recalculate revenue at new price
-            tech_performance = {'annual_energy': self.revenue_model.electricity_revenue / (original_price * 1000)}
+            tech_performance = {
+                'annual_energy': self.revenue_model.annual_energy,
+                'generation_profile': self.revenue_model.generation_profile
+            }
             
             # Update electricity price in config temporarily
             original_config_price = self.config.economic.get('electricity_price', 0.10)
