@@ -139,6 +139,28 @@ class TestOptimizationConstraints:
         # LCOE should be penalized
         assert penalized['lcoe'] > original_lcoe
     
+    def test_production_constraint_units_match_annual_energy(self):
+        """Regression test for #25: target_value and performance['annual_energy']
+        must both be MWh/year with no implicit unit conversion between them."""
+        performance = {
+            'lcoe': 85.0,
+            'capex': 1_000_000,
+            'capacity_factor': 0.35,
+            'annual_energy': 5000.0,  # MWh/year
+        }
+        design_vars = {'wind_capacity': 10}
+
+        # Target exactly matching annual_energy -> ~zero production penalty
+        on_target = OptimizationTarget('production', 5000.0)
+        penalized_on_target = self.optimizer._apply_constraints(dict(performance), design_vars, on_target)
+
+        # Target off by a 1000x unit mismatch (e.g. kWh vs MWh) -> large penalty
+        off_target = OptimizationTarget('production', 5_000_000.0)
+        penalized_off_target = self.optimizer._apply_constraints(dict(performance), design_vars, off_target)
+
+        assert penalized_on_target['lcoe'] == pytest.approx(performance['lcoe'], abs=0.01)
+        assert penalized_off_target['lcoe'] > penalized_on_target['lcoe']
+
     def test_production_target_constraint(self):
         """Test production target constraint."""
         performance = {
@@ -150,7 +172,7 @@ class TestOptimizationConstraints:
         
         original_lcoe = performance['lcoe']
         design_vars = {'wind_capacity': 100}
-        target = OptimizationTarget('production', 1000000)  # 1 GWh target
+        target = OptimizationTarget('production', 1000000)  # 1,000,000 MWh/year target
         
         penalized = self.optimizer._apply_constraints(performance, design_vars, target)
         

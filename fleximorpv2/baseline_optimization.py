@@ -24,7 +24,12 @@ from .utils.financial import FinancialCalculator
 
 @dataclass
 class OptimizationTarget:
-    """Represents the optimization target specified by user."""
+    """Represents the optimization target specified by user.
+
+    For target_type='production', target_value is annual energy in MWh/year,
+    matching the unit TechnologyModel.calculate_performance() reports for
+    'annual_energy'.
+    """
     target_type: str  # 'location', 'technologies', 'production'
     target_value: Any
     constraints: Optional[Dict[str, Any]] = None
@@ -123,7 +128,8 @@ class BaselineOptimization:
         
         Args:
             target_type: Type of optimization target ('location', 'technologies', 'production')
-            target_value: Target specification (coordinates, tech list, or kWh)
+            target_value: Target specification (coordinates, tech list, or
+                annual energy in MWh/year for target_type='production')
             method: Optimization method ('scipy', 'differential_evolution', 'genetic')
             **kwargs: Additional optimization parameters
             
@@ -372,8 +378,8 @@ class BaselineOptimization:
         
         # Production target constraint (if applicable)
         if target.target_type == 'production':
-            target_production = target.target_value  # kWh
-            actual_production = performance['annual_energy']  # kWh
+            target_production = target.target_value  # MWh/year
+            actual_production = performance['annual_energy']  # MWh/year
             production_error = abs(actual_production - target_production) / target_production
             penalty += production_error * 1e3
         

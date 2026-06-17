@@ -58,7 +58,7 @@ try:
     # Option 1: Optimize for a specific production target (e.g., 400,000 MWh/year)
     baseline_results = baseline_opt.optimize(
         target_type='production',
-        target_value=200000,  # kWh target
+        target_value=200000,  # MWh/year target
         method='differential_evolution'
     )
 

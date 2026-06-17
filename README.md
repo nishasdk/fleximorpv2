@@ -104,7 +104,7 @@ config = load_config("blyth")
 baseline = BaselineOptimization(config)
 baseline_results = baseline.optimize(
     target_type="production",
-    target_value=876000  # kWh target
+    target_value=876000  # MWh/year target
 )
 
 # Step 2: Uncertainty analysis
