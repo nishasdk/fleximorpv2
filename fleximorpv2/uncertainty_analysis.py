@@ -338,7 +338,7 @@ class UncertaintyAnalysis:
                 if 'electricity_price' in scenario:
                     # Recalculate revenue with new price
                     annual_energy = tech_performance.get('annual_energy', 0)
-                    economic_performance['revenue'] = annual_energy * scenario['electricity_price']
+                    economic_performance['revenue'] = annual_energy * scenario['electricity_price'] * 1000
                 elif 'electricity_price_multiplier' in scenario:
                     economic_performance['revenue'] *= scenario['electricity_price_multiplier']
                 
@@ -347,7 +347,8 @@ class UncertaintyAnalysis:
                     capex=economic_performance['capex'],
                     opex=economic_performance['opex'],
                     revenue=economic_performance['revenue'],
-                    project_life=self.config.economic['project_lifetime']
+                    project_life=self.config.economic['project_lifetime'],
+                    annual_energy=tech_performance.get('annual_energy', 0.0)
                 )
                 
                 # Combine results

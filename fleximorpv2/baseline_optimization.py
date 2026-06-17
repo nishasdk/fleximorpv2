@@ -336,7 +336,8 @@ class BaselineOptimization:
             capex=economic_performance['capex'],
             opex=economic_performance['opex'],
             revenue=economic_performance['revenue'],
-            project_life=self.config.economic['project_lifetime']
+            project_life=self.config.economic['project_lifetime'],
+            annual_energy=tech_performance.get('annual_energy', 0.0)
         )
         
         # Combine all performance metrics

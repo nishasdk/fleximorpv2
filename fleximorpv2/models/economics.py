@@ -252,6 +252,7 @@ class EconomicModel:
         
         return {
             'revenue': total_annual_revenue,
+            'annual_energy': annual_energy,
             'electricity_revenue': electricity_revenue,
             'subsidy_revenue': subsidy_revenue,
             'capacity_payments': capacity_payments
