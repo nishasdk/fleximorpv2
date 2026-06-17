@@ -351,14 +351,18 @@ class UncertaintyAnalysis:
                     annual_energy=tech_performance.get('annual_energy', 0.0)
                 )
                 
-                # Combine results
+                # Combine results (drop array-valued fields, e.g. hourly
+                # generation profiles, which can't be reduced by df.mean()/std())
+                scalar_tech_performance = {
+                    k: v for k, v in tech_performance.items() if not isinstance(v, np.ndarray)
+                }
                 performance = {
-                    **tech_performance,
+                    **scalar_tech_performance,
                     **economic_performance,
                     **financial_metrics,
                     'scenario_id': i
                 }
-                
+
                 performance_results.append(performance)
                 
             except Exception as e:
