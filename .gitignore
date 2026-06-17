@@ -3,19 +3,31 @@
 .claude/
 .worktrees/
 
-# Python caches and bytecode
-__pycache__/
-*.py[cod]
-
-# Local virtual environments
-.venv/
-venv/
-
-# Test and tooling caches
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
 # Local coverage artifacts
 .coverage
 htmlcov/
+.cursor/
+
+# Local environment and tooling
+.env
+.venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+*.nbconvert.ipynb
+
+# API response cache and notebook artefacts (keep directory placeholders)
+cache/
+notebooks/**/outputs/*
+!notebooks/**/outputs/.gitkeep
+
+# Editor / OS noise
+*.swp
+*~
+.idea/

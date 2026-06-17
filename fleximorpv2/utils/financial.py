@@ -78,7 +78,8 @@ class FinancialCalculator:
             opex: Annual operating expenditure
             revenue: Annual revenue
             project_life: Project lifetime in years
-            **kwargs: Additional parameters
+            **kwargs: Additional parameters, including required annual_energy
+                in MWh/year for LCOE calculation
             
         Returns:
             Dictionary with financial metrics
@@ -94,8 +95,11 @@ class FinancialCalculator:
         npv = self.calculate_npv(cash_flow.net_cash_flows, discount_rate, capex)
         irr = self.calculate_irr(cash_flow.net_cash_flows, capex)
         
-        # LCOE calculation
-        annual_energy = kwargs.get('annual_energy', revenue / 0.1)  # Assume £100/MWh if not provided
+        # LCOE calculation. Energy cannot be inferred reliably from total
+        # revenue because revenue may include subsidies or capacity payments.
+        annual_energy = kwargs.get('annual_energy')
+        if annual_energy is None:
+            raise ValueError("annual_energy is required to calculate LCOE")
         lcoe = self.calculate_lcoe(capex, opex, annual_energy, discount_rate, project_life)
         
         # Other metrics
